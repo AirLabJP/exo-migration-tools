@@ -1,0 +1,10 @@
+# DMZからのトランスポート設定
+# 全ドメインを内部メールサーバーへリレー
+
+example.co.jp       smtp:[mailserver]:25
+example.com         smtp:[mailserver]:25
+sub.example.co.jp   smtp:[mailserver]:25
+test.example.local  smtp:[mailserver]:25
+
+# フォールバック（ワイルドカード）
+*                   smtp:[mailserver]:25

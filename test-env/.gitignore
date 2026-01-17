@@ -1,0 +1,11 @@
+# Docker volumes
+maildata/
+mailstate/
+maillogs/
+dmz-logs/
+
+# Test results
+results_*/
+
+# Docker build cache
+.docker/

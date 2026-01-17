@@ -1,0 +1,32 @@
+# テスト実行結果（実際の環境情報が含まれる可能性があるため除外）
+test-env/results_*/
+
+# ログファイル
+test-env/dmz-logs/
+*.log
+
+# OS固有ファイル
+.DS_Store
+Thumbs.db
+
+# エディタ固有ファイル
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# 一時ファイル
+*.tmp
+*.bak
+*.backup
+
+# PowerShell一時ファイル
+*.ps1.bak
+
+# 個人設定ファイル（もしあれば）
+.env
+*.local
+
+# Docker関連（必要に応じて）
+# docker-compose.override.yml

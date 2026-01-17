@@ -1,0 +1,33 @@
+# DMZ SMTPリレーサーバー設定
+# 顧客のAWS DMZ環境を模擬
+
+# 基本設定
+myhostname = dmz-smtp.example.local
+mydomain = example.local
+myorigin = $mydomain
+mydestination =
+
+# ネットワーク設定
+inet_interfaces = all
+inet_protocols = ipv4
+
+# リレー設定（内部メールサーバーへ転送）
+relayhost = [mailserver]:25
+relay_domains = example.co.jp, example.com, sub.example.co.jp, test.example.local
+
+# トランスポートマップ
+transport_maps = hash:/etc/postfix/transport
+
+# セキュリティ（検証環境用に緩和）
+smtpd_recipient_restrictions = permit_mynetworks, reject_unauth_destination
+mynetworks = 127.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 10.0.0.0/8
+
+# サイズ制限
+message_size_limit = 10485760
+
+# TLS（検証環境では無効化）
+smtpd_tls_security_level = none
+smtp_tls_security_level = none
+
+# ログ
+maillog_file = /var/log/maillog

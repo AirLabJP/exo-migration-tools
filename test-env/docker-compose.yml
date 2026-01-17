@@ -1,0 +1,63 @@
+# Exchange Online移行スクリプト検証用環境
+# 顧客環境を模擬: Postfix (SMTP) + Dovecot (IMAP)
+
+services:
+  # メインメールサーバー（Postfix + Dovecot）
+  # 顧客のCourier IMAPサーバーを模擬
+  mailserver:
+    image: mailserver/docker-mailserver:latest
+    container_name: exo-test-mailserver
+    hostname: mail
+    domainname: example.local
+    ports:
+      - "25:25"      # SMTP
+      - "143:143"    # IMAP
+      - "587:587"    # Submission
+      - "993:993"    # IMAPS
+    volumes:
+      - ./maildata:/var/mail
+      - ./mailstate:/var/mail-state
+      - ./maillogs:/var/log/mail
+      - ./config/:/tmp/docker-mailserver/
+    environment:
+      - ENABLE_SPAMASSASSIN=0
+      - ENABLE_CLAMAV=0
+      - ENABLE_FAIL2BAN=0
+      - ENABLE_POSTGREY=0
+      - ENABLE_SASLAUTHD=0
+      - ONE_DIR=1
+      - DMS_DEBUG=0
+      - PERMIT_DOCKER=network
+      - POSTFIX_MESSAGE_SIZE_LIMIT=10485760  # 10MB（顧客環境を模擬）
+    cap_add:
+      - NET_ADMIN
+    restart: unless-stopped
+
+  # DMZ SMTPリレー模擬（シンプルなPostfixリレー）
+  dmz-smtp:
+    build:
+      context: ./dmz-postfix
+      dockerfile: Dockerfile
+    container_name: exo-test-dmz
+    hostname: dmz-smtp
+    domainname: example.local
+    ports:
+      - "2525:25"    # 外部からのSMTP受付（ポート変更）
+    volumes:
+      - ./dmz-postfix/main.cf:/etc/postfix/main.cf:ro
+      - ./dmz-postfix/transport:/etc/postfix/transport:ro
+      - ./dmz-logs:/var/log
+    environment:
+      - RELAY_HOST=mailserver
+    depends_on:
+      - mailserver
+    restart: unless-stopped
+
+volumes:
+  maildata:
+  mailstate:
+  maillogs:
+
+networks:
+  default:
+    name: exo-test-network

@@ -1,0 +1,23 @@
+# 顧客環境を模擬したPostfix追加設定
+# docker-mailserverのデフォルト設定に追加される
+
+# サイズ制限（顧客環境: 10MB）
+message_size_limit = 10485760
+mailbox_size_limit = 0
+header_size_limit = 102400
+
+# 複数ドメイン対応
+virtual_alias_domains = example.co.jp, example.com, sub.example.co.jp, test.example.local
+
+# リレー設定（内部からEXOへの転送を模擬）
+# 本番ではここにEXOのスマートホストが入る
+# relayhost = [exo-protection.mail.protection.outlook.com]:25
+
+# TLS設定
+smtpd_tls_security_level = may
+smtp_tls_security_level = may
+smtpd_tls_protocols = !SSLv2, !SSLv3
+smtp_tls_protocols = !SSLv2, !SSLv3
+
+# ログ詳細化（検証用）
+smtpd_tls_loglevel = 1

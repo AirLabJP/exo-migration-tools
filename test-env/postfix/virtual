@@ -1,0 +1,14 @@
+# 仮想エイリアスマップ
+# 顧客環境では複数ドメインのエイリアスがここに定義される
+
+# テスト用ユーザー
+user1@example.co.jp       user1@example.local
+user2@example.co.jp       user2@example.local
+admin@example.co.jp       admin@example.local
+
+user1@example.com         user1@example.local
+user2@example.com         user2@example.local
+
+# 部署メールアドレス
+sales@example.co.jp       user1@example.local
+support@example.co.jp     user2@example.local

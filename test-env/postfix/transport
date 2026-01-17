@@ -1,0 +1,12 @@
+# Postfix transport map
+# 顧客環境では40ドメインがここに定義される
+# 移行後はEXO向けにここを書き換える
+
+# ローカル配送（現状）
+example.co.jp      local:
+example.com        local:
+sub.example.co.jp  local:
+test.example.local local:
+
+# EXO移行後の設定例（コメントアウト）
+# example.co.jp      smtp:[exo-tenant.mail.protection.outlook.com]:25
