@@ -257,6 +257,44 @@ Uninstall-ADDSDomainController -ForceRemoval -IgnoreLastDnsServerForZone
 | `Setup-ADDSReplication.ps1` | 2台DC構成のVM作成 | Hyper-V親ホスト |
 | `Setup-DC02DomainJoin.ps1` | DC02のドメイン参加（自動化） | Windows Server VM（DC02） |
 | `Setup-EntraIDConnect.ps1` | Entra ID Connect構築 | AD DS参加済みサーバー |
+| `Send-TestEmail.ps1` | 検証用メール送信（Thunderbird代替） | 任意のWindows端末 |
+| `Test-MailHeader.ps1` | メールヘッダー解析（CSV出力） | 任意のWindows端末 |
+
+## 検証ツール
+
+### メール送信テスト（Thunderbird代替）
+
+```powershell
+# 内部宛（Courier IMAP）
+.\Send-TestEmail.ps1 -To "testuser02@lab.local" -Subject "内部宛テスト"
+
+# Exchange Online宛
+.\Send-TestEmail.ps1 -To "user@exo-tenant.onmicrosoft.com" -Subject "EXO宛テスト"
+
+# 外部宛
+.\Send-TestEmail.ps1 -To "your-email@gmail.com" -Subject "外部宛テスト"
+```
+
+### メールヘッダー解析
+
+```powershell
+# .emlファイルから解析
+.\Test-MailHeader.ps1 -HeaderPath "C:\mail.eml"
+
+# CSV形式で出力（デフォルト）
+# → mail_header_analysis_YYYYMMDD_HHMMSS.csv
+# → mail_header_analysis_YYYYMMDD_HHMMSS_hops.csv
+
+# JSON形式で出力
+.\Test-MailHeader.ps1 -HeaderPath "mail.eml" -OutFormat JSON
+```
+
+**解析項目**:
+- 送信経路（Receivedヘッダー、ホップ数）
+- SPF/DKIM/DMARC認証結果
+- ループ検出
+- 送信元・宛先情報
+- メッセージID
 
 ## 参考
 
