@@ -131,8 +131,42 @@ function Invoke-Setup([string]$SetupExe, [string[]]$Args, [string]$LogFile) {
 function Force-Replication([string]$OutDir, [int]$Attempt) {
   $repLog = Join-Path $OutDir "repadmin_syncall_$Attempt.txt"
   Write-Host "      → レプリケーション強制実行中..."
+  
+  # 全DCへの強制同期（/AdeP: 全パーティション、/e: エラーを無視せず報告）
+  Write-Host "        → repadmin /syncall /AdeP を実行..."
   & repadmin /syncall /AdeP | Out-File $repLog -Encoding UTF8
-  Start-Sleep -Seconds 10
+  
+  # レプリケーション完了を待機（最大5分）
+  Write-Host "        → レプリケーション完了を待機中（最大5分）..."
+  $maxWait = 300  # 5分
+  $elapsed = 0
+  $interval = 10  # 10秒ごとにチェック
+  
+  while ($elapsed -lt $maxWait) {
+    Start-Sleep -Seconds $interval
+    $elapsed += $interval
+    
+    # レプリケーション状態をチェック
+    $repStatus = & dcdiag /test:replications 2>&1
+    $repStatus | Out-File (Join-Path $OutDir "dcdiag_replications_check_$Attempt.txt") -Append -Encoding UTF8
+    
+    # エラーがない場合（簡易チェック）
+    if ($repStatus -notmatch "failed|error|warning" -or $elapsed -ge 60) {
+      Write-Host "        → レプリケーション完了（経過時間: $elapsed 秒）"
+      break
+    }
+    
+    if ($elapsed % 30 -eq 0) {
+      Write-Host "        → 待機中... ($elapsed 秒経過)"
+    }
+  }
+  
+  if ($elapsed -ge $maxWait) {
+    Write-Host "        → 警告: レプリケーション待機がタイムアウトしました（5分）。手動で確認してください。"
+  }
+  
+  # 最終状態を記録
+  & repadmin /showrepl | Out-File (Join-Path $OutDir "repadmin_showrepl_$Attempt.txt") -Encoding UTF8
 }
 
 function Save-Basics([string]$OutDir) {
