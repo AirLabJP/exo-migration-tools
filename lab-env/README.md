@@ -41,16 +41,29 @@ Install-WindowsFeature -Name Containers
 
 ## クイックスタート
 
-### Step 1: Windows Server + AD DSの自動構築
+### 構成オプション
+
+#### オプション1: 単一DC構成（シンプル）
 
 ```powershell
-# 管理者権限でPowerShellを起動
-
-# スクリプト実行ポリシーを変更（初回のみ）
-Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
-
-# AD DS構築スクリプトを実行
+# Step 1: Windows Server + AD DSの自動構築
 .\Setup-LabEnvironment.ps1
+```
+
+#### オプション2: 2台DC構成（レプリケーション検証用）**推奨**
+
+```powershell
+# Step 1: Hyper-V上で2台のVMを作成
+.\Setup-ADDSReplication.ps1 -IsoPath "D:\ISO\Windows_Server_2022.iso"
+
+# Step 2: DC01でドメイン構築
+# （Hyper-VマネージャーでDC01に接続後）
+.\Setup-LabEnvironment.ps1
+
+# Step 3: DC02でドメイン参加（手動またはスクリプト）
+# DC02のネットワーク設定でDNSをDC01のIPに設定後
+Install-WindowsFeature -Name AD-Domain-Services -IncludeManagementTools
+Install-ADDSDomainController -DomainName "lab.local" -Credential (Get-Credential)
 ```
 
 **実行内容**:
@@ -58,10 +71,45 @@ Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
 - ドメインコントローラーの昇格（`lab.local`）
 - テストユーザー・グループの作成
 - DNS設定
+- レプリケーション設定（2台構成の場合）
 
-**所要時間**: 約10〜15分（再起動含む）
+**所要時間**: 
+- 単一DC: 約10〜15分（再起動含む）
+- 2台DC: 約30〜40分（VM作成 + インストール + 設定）
 
-### Step 2: メールサーバー環境の起動
+### Step 2: Exchange Server 2022の構築（オプション）
+
+```powershell
+# Exchange Server 2022 ISOをマウント後
+.\Setup-ExchangeServer.ps1 `
+    -SetupExePath "D:\Setup.exe" `
+    -OrganizationName "Lab Organization"
+```
+
+**前提条件**:
+- AD DSドメインに参加済み
+- Exchange Server 2022 ISOファイルをマウント済み
+- 必要なWindows機能がインストール済み
+
+### Step 3: Entra ID Connectの構築（オプション）
+
+```powershell
+$password = ConvertTo-SecureString "YourPassword" -AsPlainText -Force
+.\Setup-EntraIDConnect.ps1 `
+    -TenantId "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" `
+    -GlobalAdminUPN "admin@tenant.onmicrosoft.com" `
+    -GlobalAdminPassword $password `
+    -SyncMode "PasswordHashSync"
+```
+
+**前提条件**:
+- AD DSドメインに参加済み
+- Entra ID（Azure AD）テナントが準備済み
+- グローバル管理者アカウントの資格情報
+
+**注意**: インストール後、GUIウィザードで詳細設定が必要です。
+
+### Step 4: メールサーバー環境の起動
 
 ```powershell
 # lab-envフォルダに移動
@@ -206,6 +254,15 @@ docker-compose down -v
 # 注意: これはドメインコントローラーを破棄します
 Uninstall-ADDSDomainController -ForceRemoval -IgnoreLastDnsServerForZone
 ```
+
+## スクリプト一覧
+
+| スクリプト | 用途 | 実行場所 |
+|---|---|---|
+| `Setup-LabEnvironment.ps1` | 単一DC + AD DS構築 | Windows Server VM |
+| `Setup-ADDSReplication.ps1` | 2台DC構成のVM作成 | Hyper-V親ホスト |
+| `Setup-ExchangeServer.ps1` | Exchange Server 2022構築 | Exchange Server VM |
+| `Setup-EntraIDConnect.ps1` | Entra ID Connect構築 | AD DS参加済みサーバー |
 
 ## 参考
 
