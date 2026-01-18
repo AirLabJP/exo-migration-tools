@@ -60,10 +60,12 @@ Install-WindowsFeature -Name Containers
 # （Hyper-VマネージャーでDC01に接続後）
 .\Setup-LabEnvironment.ps1
 
-# Step 3: DC02でドメイン参加（手動またはスクリプト）
-# DC02のネットワーク設定でDNSをDC01のIPに設定後
-Install-WindowsFeature -Name AD-Domain-Services -IncludeManagementTools
-Install-ADDSDomainController -DomainName "lab.local" -Credential (Get-Credential)
+# Step 3: DC02でドメイン参加（自動化）
+# DC01のIPアドレスを確認後（DC01で: ipconfig）
+$dc01Cred = Get-Credential -UserName "LAB\Administrator" -Message "DC01の管理者資格情報"
+.\Setup-DC02DomainJoin.ps1 -Dc01IPAddress "192.168.1.10" -Dc01AdminCredential $dc01Cred
+
+# ※ レプリケーションは自動で開始されます
 ```
 
 **実行内容**:
@@ -77,21 +79,13 @@ Install-ADDSDomainController -DomainName "lab.local" -Credential (Get-Credential
 - 単一DC: 約10〜15分（再起動含む）
 - 2台DC: 約30〜40分（VM作成 + インストール + 設定）
 
-### Step 2: Exchange Server 2022の構築（オプション）
+**レプリケーションについて**:
+- `Install-ADDSDomainController`を実行すると、**自動的にレプリケーションが開始されます**
+- 手動で開始する必要はありません
+- レプリケーション完了まで数分〜数十分かかります
+- 完了確認: `repadmin /showrepl` または `dcdiag /test:replications`
 
-```powershell
-# Exchange Server 2022 ISOをマウント後
-.\Setup-ExchangeServer.ps1 `
-    -SetupExePath "D:\Setup.exe" `
-    -OrganizationName "Lab Organization"
-```
-
-**前提条件**:
-- AD DSドメインに参加済み
-- Exchange Server 2022 ISOファイルをマウント済み
-- 必要なWindows機能がインストール済み
-
-### Step 3: Entra ID Connectの構築（オプション）
+### Step 2: Entra ID Connectの構築（オプション）
 
 ```powershell
 $password = ConvertTo-SecureString "YourPassword" -AsPlainText -Force
@@ -109,7 +103,7 @@ $password = ConvertTo-SecureString "YourPassword" -AsPlainText -Force
 
 **注意**: インストール後、GUIウィザードで詳細設定が必要です。
 
-### Step 4: メールサーバー環境の起動
+### Step 3: メールサーバー環境の起動
 
 ```powershell
 # lab-envフォルダに移動
@@ -259,9 +253,9 @@ Uninstall-ADDSDomainController -ForceRemoval -IgnoreLastDnsServerForZone
 
 | スクリプト | 用途 | 実行場所 |
 |---|---|---|
-| `Setup-LabEnvironment.ps1` | 単一DC + AD DS構築 | Windows Server VM |
+| `Setup-LabEnvironment.ps1` | 単一DC + AD DS構築 | Windows Server VM（DC01） |
 | `Setup-ADDSReplication.ps1` | 2台DC構成のVM作成 | Hyper-V親ホスト |
-| `Setup-ExchangeServer.ps1` | Exchange Server 2022構築 | Exchange Server VM |
+| `Setup-DC02DomainJoin.ps1` | DC02のドメイン参加（自動化） | Windows Server VM（DC02） |
 | `Setup-EntraIDConnect.ps1` | Entra ID Connect構築 | AD DS参加済みサーバー |
 
 ## 参考
