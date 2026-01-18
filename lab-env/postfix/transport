@@ -1,0 +1,8 @@
+# Postfix transport map
+# 検証用ドメイン（lab.local）はローカル配送
+
+# ローカル配送（現状）
+lab.local      local:
+
+# 外部宛はデフォルト経路を使用（必要に応じてDMZ SMTPを指定）
+# external.domain.com    smtp:[dmz-aws]:25

@@ -1,0 +1,16 @@
+# ログファイル
+logs/
+*.log
+
+# メールデータ（検証用）
+maildata/
+mailstate/
+maillogs/
+
+# 環境情報（自動生成）
+environment-info.json
+setup-log.txt
+
+# 一時ファイル
+*.tmp
+*.bak

@@ -1,0 +1,113 @@
+# Exchange Online移行 検証環境（メールサーバー構成）
+# Windows Server上のDockerで動作
+
+services:
+  # SMTPハブ（Postfix） - 顧客の内部SMTPハブを模擬
+  postfix:
+    image: catatnight/postfix:latest
+    container_name: lab-postfix
+    hostname: postfix
+    domainname: lab.local
+    ports:
+      - "25:25"      # SMTP
+      - "587:587"    # Submission
+    volumes:
+      - ./postfix/main.cf:/etc/postfix/main.cf:ro
+      - ./postfix/transport:/etc/postfix/transport:ro
+      - ./postfix/virtual:/etc/postfix/virtual:ro
+      - ./logs/postfix:/var/log
+    environment:
+      - maildomain=lab.local
+      - smtp_server=mailbox
+      - smtp_user=root
+      - smtp_password=
+      - RELAY_NETWORKS=172.16.0.0/12 192.168.0.0/16 10.0.0.0/8
+    networks:
+      - lab-network
+    depends_on:
+      - mailbox
+    restart: unless-stopped
+
+  # メールボックスサーバー（Dovecot） - Courier IMAPを模擬
+  mailbox:
+    image: mailserver/docker-mailserver:latest
+    container_name: lab-mailbox
+    hostname: mailbox
+    domainname: lab.local
+    ports:
+      - "143:143"    # IMAP
+      - "993:993"    # IMAPS
+    volumes:
+      - ./maildata:/var/mail
+      - ./mailstate:/var/mail-state
+      - ./maillogs:/var/log/mail
+      - ./config/dovecot-quotas.cf:/etc/dovecot-quotas.cf:ro
+    environment:
+      - ENABLE_SPAMASSASSIN=0
+      - ENABLE_CLAMAV=0
+      - ENABLE_FAIL2BAN=0
+      - ENABLE_POSTGREY=0
+      - ENABLE_SASLAUTHD=0
+      - ONE_DIR=1
+      - DMS_DEBUG=0
+      - PERMIT_DOCKER=network
+      - POSTFIX_MESSAGE_SIZE_LIMIT=10485760  # 10MB
+    cap_add:
+      - NET_ADMIN
+    networks:
+      - lab-network
+    restart: unless-stopped
+
+  # DMZ SMTP（AWS側） - 外部SMTP中継を模擬
+  dmz-aws:
+    build:
+      context: ./dmz-postfix-aws
+      dockerfile: Dockerfile
+    container_name: lab-dmz-aws
+    hostname: dmz-aws-smtp
+    domainname: lab.local
+    ports:
+      - "2525:25"    # 外部からのSMTP受付
+    volumes:
+      - ./dmz-postfix-aws/main.cf:/etc/postfix/main.cf:ro
+      - ./dmz-postfix-aws/transport:/etc/postfix/transport:ro
+      - ./logs/dmz-aws:/var/log
+    environment:
+      - RELAY_HOST=mailbox
+    networks:
+      - lab-network
+    depends_on:
+      - mailbox
+    restart: unless-stopped
+
+  # DMZ SMTP（オンプレ側） - 内部DMZ SMTP中継を模擬
+  dmz-onprem:
+    build:
+      context: ./dmz-postfix-onprem
+      dockerfile: Dockerfile
+    container_name: lab-dmz-onprem
+    hostname: dmz-onprem-smtp
+    domainname: lab.local
+    ports:
+      - "2526:25"    # フォールバック経路用
+    volumes:
+      - ./dmz-postfix-onprem/main.cf:/etc/postfix/main.cf:ro
+      - ./dmz-postfix-onprem/transport:/etc/postfix/transport:ro
+      - ./logs/dmz-onprem:/var/log
+    environment:
+      - RELAY_HOST=mailbox
+    networks:
+      - lab-network
+    depends_on:
+      - mailbox
+    restart: unless-stopped
+
+networks:
+  lab-network:
+    name: lab-network
+    driver: bridge
+
+volumes:
+  maildata:
+  mailstate:
+  maillogs:

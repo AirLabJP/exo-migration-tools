@@ -1,0 +1,10 @@
+# 仮想エイリアスマップ
+# 検証用ドメインのエイリアス設定
+
+# テストユーザー（lab.localドメイン）
+testuser01@lab.local       testuser01@lab.local
+testuser02@lab.local       testuser02@lab.local
+
+# 部署メールアドレス（例）
+sales@lab.local            testuser01@lab.local
+support@lab.local          testuser02@lab.local

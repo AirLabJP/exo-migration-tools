@@ -1,0 +1,42 @@
+# Postfix SMTPハブ設定
+# 顧客の内部SMTPハブを模擬
+
+# 基本設定
+myhostname = postfix.lab.local
+mydomain = lab.local
+myorigin = $mydomain
+
+# ネットワーク設定
+inet_interfaces = all
+inet_protocols = ipv4
+
+# ローカル配送設定
+mydestination = $myhostname, localhost.$mydomain, localhost
+
+# 仮想エイリアスドメイン
+virtual_alias_domains = lab.local
+
+# 仮想エイリアスマップ
+virtual_alias_maps = hash:/etc/postfix/virtual
+
+# トランスポートマップ
+transport_maps = hash:/etc/postfix/transport
+
+# リレー設定
+# 内部ドメイン（lab.local）はローカル配送
+# 外部ドメインはDMZ SMTPへリレー（未設定、必要に応じて追加）
+
+# セキュリティ
+smtpd_recipient_restrictions = permit_mynetworks, reject_unauth_destination
+mynetworks = 127.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 10.0.0.0/8
+
+# サイズ制限（検証環境: 10MB）
+message_size_limit = 10485760
+mailbox_size_limit = 0
+
+# TLS（検証環境では緩和）
+smtpd_tls_security_level = may
+smtp_tls_security_level = may
+
+# ログ
+maillog_file = /var/log/maillog
