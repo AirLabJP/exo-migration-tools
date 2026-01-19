@@ -104,11 +104,75 @@ user1@example.local,user1,user1@example.co.jp,alias1@example.co.jp;alias2@exampl
 | Outbound | To-OnPrem-DMZ-Fallback | 未移行ユーザーへのフォールバック |
 | Inbound | From-AWS-DMZ-SMTP | AWS DMZ SMTPからの受信許可 |
 
+### Add-UsersToLicenseGroup.ps1
+
+**目的**: CSVで指定したユーザーをライセンス付与用グループに追加します。
+
+**重要な方針**:
+- 移行中は**静的グループ**を使用し、CSVで指定したユーザーのみにライセンスを付与
+- 動的グループは全ドメイン移行完了後に切り替え → 意図しないメールボックス作成を防止
+
+```powershell
+# WhatIfで確認
+.\phase2-setup\Add-UsersToLicenseGroup.ps1 `
+  -CsvPath migration_users.csv `
+  -GroupName "EXO-License-Pilot" `
+  -WhatIfMode
+
+# 本番実行
+.\phase2-setup\Add-UsersToLicenseGroup.ps1 `
+  -CsvPath migration_users.csv `
+  -GroupName "EXO-License-Pilot"
+
+# グループから削除
+.\phase2-setup\Add-UsersToLicenseGroup.ps1 `
+  -CsvPath migration_users.csv `
+  -GroupName "EXO-License-Pilot" `
+  -RemoveMode
+```
+
+**入力CSV形式**:
+```csv
+UserPrincipalName
+user1@example.local
+user2@example.local
+```
+
+**注意**: グループベースライセンスには Entra ID Premium P1 以上が必要です。
+
 ---
 
 ## Phase3: ルーティング変更 ★本番切替
 
 **注意**: このフェーズの操作はメールフローに直接影響します。必ずドライランで確認してから本番実行してください。
+
+### New-TestMailboxes.ps1
+
+**目的**: テストドメインでのメールフロー検証用にテストメールボックスを作成します。
+
+```powershell
+# WhatIfで確認
+.\phase3-routing\New-TestMailboxes.ps1 `
+  -TestDomain "test.contoso.co.jp" `
+  -Count 3 `
+  -WhatIfMode
+
+# 本番実行（ライセンス自動選択）
+.\phase3-routing\New-TestMailboxes.ps1 `
+  -TestDomain "test.contoso.co.jp" `
+  -Count 3
+
+# ライセンス指定
+.\phase3-routing\New-TestMailboxes.ps1 `
+  -TestDomain "test.contoso.co.jp" `
+  -SkuId "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+```
+
+**出力**:
+- `test_users.csv` - 作成したユーザー一覧（パスワード含む）
+- `cleanup_test_users.ps1` - テストユーザー削除用スクリプト
+
+**注意**: ライセンス付与後、メールボックス作成には数分〜数十分かかります。
 
 ### Set-AcceptedDomainType.ps1
 

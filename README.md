@@ -52,11 +52,13 @@ exo-migration-tools/
 │   ├── Collect-ADInventory.ps1
 │   ├── Collect-EntraInventory.ps1
 │   ├── Collect-EXOInventory.ps1
-│   └── Collect-DNSRecords.ps1
+│   ├── Collect-DNSRecords.ps1
+│   └── Export-EXOConfigSnapshot.ps1  # EXO設定スナップショット
 │
 ├── analysis/                     # 分析・検証スクリプト
 │   ├── Detect-StrayRecipients.ps1
-│   └── Test-SmtpDuplicates.ps1
+│   ├── Test-SmtpDuplicates.ps1
+│   └── Plan-RecipientRemediation.ps1  # 紛れ対処計画
 │
 ├── execution/                    # 実行スクリプト（フェーズ別）
 │   ├── phase1-preparation/       # Phase1: 事前準備
@@ -65,12 +67,14 @@ exo-migration-tools/
 │   │
 │   ├── phase2-setup/             # Phase2: EXO箱作り
 │   │   ├── Set-ADMailAddressesFromCsv.ps1 # ADメール属性投入
-│   │   └── New-EXOConnectors.ps1          # EXOコネクタ作成
+│   │   ├── New-EXOConnectors.ps1          # EXOコネクタ作成
+│   │   └── Add-UsersToLicenseGroup.ps1    # ライセンスグループへのユーザー追加
 │   │
-│   ├── phase3-routing/           # Phase3: ルーティング変更 ★新規
+│   ├── phase3-routing/           # Phase3: ルーティング変更
 │   │   ├── Set-PostfixRouting.sh        # Postfix transport変更
 │   │   ├── Set-DmzSmtpRouting.sh        # DMZ SMTP transport変更
-│   │   └── Set-AcceptedDomainType.ps1   # EXO Accepted Domain変更
+│   │   ├── Set-AcceptedDomainType.ps1   # EXO Accepted Domain変更
+│   │   └── New-TestMailboxes.ps1        # テスト用メールボックス作成
 │   │
 │   ├── phase4-validation/        # Phase4: 検証 ★新規
 │   │   └── Test-MailFlowMatrix.ps1      # メールフロー検証
@@ -156,9 +160,26 @@ sudo bash inventory/collect_smtp_dmz.sh /tmp/inventory
   -ExoRecipientsCsv C:\temp\inventory\exo_*\recipients.csv `
   -AdUsersCsv C:\temp\inventory\ad_*\ad_users_mailattrs.csv `
   -TargetDomainsFile domains.txt
+
+# 紛れ対処計画を作成（検出結果をもとに）
+.\analysis\Plan-RecipientRemediation.ps1 `
+  -StrayReportPath C:\temp\stray_report\*\strays_action_required.csv `
+  -AutoClassify
 ```
 
-#### 1-5. ADスキーマ拡張
+#### 1-5. EXO設定スナップショット
+
+変更前の設定を保存しておきます。
+
+```powershell
+# 作業前スナップショット
+.\inventory\Export-EXOConfigSnapshot.ps1 -SnapshotName "before_migration"
+
+# 作業後スナップショット
+.\inventory\Export-EXOConfigSnapshot.ps1 -SnapshotName "after_migration"
+```
+
+#### 1-6. ADスキーマ拡張
 
 ```powershell
 # Schema Master DCで実行
@@ -209,7 +230,53 @@ sudo bash inventory/collect_smtp_dmz.sh /tmp/inventory
   -TargetDomainsFile domains.txt
 ```
 
+#### 2-4. ライセンス付与用グループへのユーザー追加
+
+移行中は**静的グループ**を使用し、CSVで指定したユーザーのみにライセンスを付与します。
+動的グループは全ドメイン移行完了後に切り替えることで、意図しないメールボックス作成を防止します。
+
+```powershell
+# WhatIfで確認
+.\execution\phase2-setup\Add-UsersToLicenseGroup.ps1 `
+  -CsvPath migration_users.csv `
+  -GroupName "EXO-License-Pilot" `
+  -WhatIfMode
+
+# 本番実行
+.\execution\phase2-setup\Add-UsersToLicenseGroup.ps1 `
+  -CsvPath migration_users.csv `
+  -GroupName "EXO-License-Pilot"
+
+# ユーザーを削除する場合
+.\execution\phase2-setup\Add-UsersToLicenseGroup.ps1 `
+  -CsvPath migration_users.csv `
+  -GroupName "EXO-License-Pilot" `
+  -RemoveMode
+```
+
+**注意**: グループベースライセンスはEntra ID Premium P1以上が必要です。
+
 ### Phase 3: ルーティング変更（★本番切替）
+
+#### 3-0. テスト用メールボックス作成（テストドメイン検証用）
+
+本番切替前にテストドメインでメールフローを検証するためのテストメールボックスを作成します。
+
+```powershell
+# WhatIfで確認
+.\execution\phase3-routing\New-TestMailboxes.ps1 `
+  -TestDomain "test.contoso.co.jp" `
+  -Count 3 `
+  -WhatIfMode
+
+# 本番実行
+.\execution\phase3-routing\New-TestMailboxes.ps1 `
+  -TestDomain "test.contoso.co.jp" `
+  -Count 3
+
+# テスト完了後のクリーンアップ
+# → 出力フォルダ内の cleanup_test_users.ps1 を実行
+```
 
 #### 3-1. EXO Accepted Domain を Internal Relay に変更
 
