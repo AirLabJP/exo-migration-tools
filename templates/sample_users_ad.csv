@@ -1,0 +1,6 @@
+SamAccountName,UserPrincipalName,DisplayName,GivenName,Surname,PrimarySmtpAddress,Aliases,Description
+user001,user001@contoso.local,山田 太郎,太郎,山田,user001@contoso.co.jp,yamada@contoso.co.jp;t.yamada@contoso.co.jp,営業部
+user002,user002@contoso.local,鈴木 花子,花子,鈴木,user002@contoso.co.jp,suzuki@contoso.co.jp,経理部
+user003,user003@contoso.local,佐藤 一郎,一郎,佐藤,user003@contoso.co.jp,,開発部
+testuser01,testuser01@lab.local,テスト ユーザー01,ユーザー01,テスト,testuser01@test.contoso.co.jp,,検証用
+testuser02,testuser02@lab.local,テスト ユーザー02,ユーザー02,テスト,testuser02@test.contoso.co.jp,,検証用

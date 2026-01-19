@@ -50,7 +50,7 @@ Install-WindowsFeature -Name Containers
 .\Setup-LabEnvironment.ps1
 ```
 
-#### オプション2: 2台DC構成（レプリケーション検証用）**推奨**
+#### オプション2: 2台DC構成（レプリケーション検証用）
 
 ```powershell
 # Step 1: Hyper-V上で2台のVMを作成
@@ -67,6 +67,153 @@ $dc01Cred = Get-Credential -UserName "LAB\Administrator" -Message "DC01の管理
 
 # ※ レプリケーションは自動で開始されます
 ```
+
+#### オプション3: 3台構成（AD 2台 + Entra Connect専用 1台）★推奨★
+
+本番相当の検証環境。EXOメールボックス作成までの全フローを検証できます。
+
+```
+【構成図】
+
+  ┌─────────────────────────────────────────────────────────────┐
+  │  Hyper-V ホスト（Windows 10/11 Pro または Windows Server）   │
+  │                                                             │
+  │  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐  │
+  │  │ VM: DC01    │  │ VM: DC02    │  │ VM: AADC01          │  │
+  │  │ AD DS      │◄─►│ AD DS      │  │ Entra ID Connect   │  │
+  │  │ (PDC)       │  │ (レプリカ)  │  │ (同期専用)          │  │
+  │  │ lab.local   │  │ lab.local   │  │ lab.local参加       │  │
+  │  └─────────────┘  └─────────────┘  └──────────┬──────────┘  │
+  └───────────────────────────────────────────────┼─────────────┘
+                                                  │ 同期
+                                                  ▼
+                                      ┌───────────────────────┐
+                                      │ Microsoft Entra ID    │
+                                      │ (試用版テナント)       │
+                                      │ *.onmicrosoft.com     │
+                                      └───────────┬───────────┘
+                                                  │
+                                                  ▼
+                                      ┌───────────────────────┐
+                                      │ Exchange Online       │
+                                      │ メールボックス作成     │
+                                      └───────────────────────┘
+```
+
+**VMスペック目安**:
+| VM | vCPU | RAM | ディスク | 用途 |
+|----|------|-----|----------|------|
+| DC01 | 2 | 4GB | 60GB | AD DS (PDC) |
+| DC02 | 2 | 4GB | 60GB | AD DS (レプリカ) |
+| AADC01 | 2 | 4GB | 60GB | Entra ID Connect |
+
+**ホストマシン要件**: 16GB以上のRAM推奨
+
+##### Step 1: Hyper-V VMの作成
+
+```powershell
+# Hyper-Vホストで実行
+# 3台のVMを作成（ISO指定）
+$isoPath = "D:\ISO\Windows_Server_2022_Evaluation.iso"
+
+# DC01用VM作成
+New-VM -Name "DC01" -MemoryStartupBytes 4GB -NewVHDPath "D:\VMs\DC01.vhdx" -NewVHDSizeBytes 60GB -Generation 2
+Set-VMDvdDrive -VMName "DC01" -Path $isoPath
+Start-VM -Name "DC01"
+
+# DC02用VM作成
+New-VM -Name "DC02" -MemoryStartupBytes 4GB -NewVHDPath "D:\VMs\DC02.vhdx" -NewVHDSizeBytes 60GB -Generation 2
+Set-VMDvdDrive -VMName "DC02" -Path $isoPath
+Start-VM -Name "DC02"
+
+# AADC01用VM作成
+New-VM -Name "AADC01" -MemoryStartupBytes 4GB -NewVHDPath "D:\VMs\AADC01.vhdx" -NewVHDSizeBytes 60GB -Generation 2
+Set-VMDvdDrive -VMName "AADC01" -Path $isoPath
+Start-VM -Name "AADC01"
+```
+
+##### Step 2: DC01でドメイン構築
+
+```powershell
+# DC01のVMコンソールで実行
+.\Setup-LabEnvironment.ps1
+
+# 再起動後、IPアドレスを確認
+ipconfig
+# → 例: 192.168.1.10
+```
+
+##### Step 3: DC02のドメイン参加
+
+```powershell
+# DC02のVMコンソールで実行
+$dc01Cred = Get-Credential -UserName "LAB\Administrator" -Message "DC01の管理者資格情報"
+.\Setup-DC02DomainJoin.ps1 -Dc01IPAddress "192.168.1.10" -Dc01AdminCredential $dc01Cred
+```
+
+##### Step 4: AADC01のドメイン参加 + Entra ID Connect
+
+```powershell
+# AADC01のVMコンソールで実行
+
+# 1. DNSをDC01に向ける
+$adapter = Get-NetAdapter | Where-Object Status -eq "Up"
+Set-DnsClientServerAddress -InterfaceIndex $adapter.ifIndex -ServerAddresses "192.168.1.10"
+
+# 2. ドメイン参加
+$dc01Cred = Get-Credential -UserName "LAB\Administrator" -Message "DC01の管理者資格情報"
+Add-Computer -DomainName "lab.local" -Credential $dc01Cred -Restart
+
+# --- 再起動後 ---
+
+# 3. Entra ID Connect インストール
+$password = ConvertTo-SecureString "YourGlobalAdminPassword" -AsPlainText -Force
+.\Setup-EntraIDConnect.ps1 `
+    -TenantId "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" `
+    -GlobalAdminUPN "admin@yourtenant.onmicrosoft.com" `
+    -GlobalAdminPassword $password `
+    -SyncMode "PasswordHashSync"
+```
+
+##### Step 5: テストユーザー作成 → 同期 → メールボックス確認
+
+```powershell
+# DC01またはAADC01で実行
+
+# 1. ADにテストユーザー作成（CSVベース）
+.\execution\phase2-setup\New-ADUsersFromCsv.ps1 `
+  -CsvPath templates\sample_users_ad.csv `
+  -TargetOU "OU=Users,DC=lab,DC=local" `
+  -SetMailAttributes
+
+# 2. Entra ID Connect 差分同期
+Start-ADSyncSyncCycle -PolicyType Delta
+
+# 3. 同期状況確認
+Get-ADSyncConnectorRunStatus
+
+# 4. Entra IDでユーザー確認
+Connect-MgGraph -Scopes "User.Read.All"
+Get-MgUser -Filter "onPremisesSyncEnabled eq true" | Select DisplayName,UserPrincipalName
+
+# 5. ライセンスグループにユーザー追加（CSVから）
+.\execution\phase2-setup\Add-UsersToLicenseGroup.ps1 `
+  -CsvPath .\ad_user_creation\*\results.csv `
+  -GroupName "EXO-License-Pilot"
+
+# 6. EXOメールボックス作成を待機（数分〜数十分）
+Connect-ExchangeOnline
+Get-Mailbox -ResultSize 10 | Sort-Object WhenCreated -Descending
+```
+
+##### Entra ID試用版テナントの取得方法
+
+1. [Microsoft 365管理センター](https://admin.microsoft.com)にアクセス
+2. 新規アカウント作成 または 既存テナントで試用版を追加
+3. **Microsoft 365 E3/E5 試用版**（30日無料）を有効化
+   - Exchange Onlineライセンスが含まれる
+4. または**Entra ID Premium P1/P2 試用版**を追加
+   - グループベースライセンスに必要
 
 **実行内容**:
 - AD DS役割のインストール

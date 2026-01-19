@@ -1,0 +1,6 @@
+UserPrincipalName,DisplayName,GivenName,Surname,MailNickname
+testuser01@test.contoso.co.jp,テスト ユーザー01,ユーザー01,テスト,testuser01
+testuser02@test.contoso.co.jp,テスト ユーザー02,ユーザー02,テスト,testuser02
+testuser03@test.contoso.co.jp,テスト ユーザー03,ユーザー03,テスト,testuser03
+pilot01@contoso.co.jp,パイロット ユーザー01,ユーザー01,パイロット,pilot01
+pilot02@contoso.co.jp,パイロット ユーザー02,ユーザー02,パイロット,pilot02

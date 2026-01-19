@@ -66,9 +66,16 @@ exo-migration-tools/
 │   │   └── Invoke-ExchangeSchemaPrep.ps1 # ADスキーマ拡張
 │   │
 │   ├── phase2-setup/             # Phase2: EXO箱作り
+│   │   ├── New-ADUsersFromCsv.ps1         # ADユーザー作成（CSVベース）
+│   │   ├── New-EntraUsersFromCsv.ps1      # Entra IDユーザー作成（CSVベース）
 │   │   ├── Set-ADMailAddressesFromCsv.ps1 # ADメール属性投入
 │   │   ├── New-EXOConnectors.ps1          # EXOコネクタ作成
 │   │   └── Add-UsersToLicenseGroup.ps1    # ライセンスグループへのユーザー追加
+│
+├── templates/                    # CSVテンプレート
+│   ├── README.md
+│   ├── sample_users_ad.csv       # ADユーザー作成用CSV
+│   └── sample_users_entra.csv    # Entra IDユーザー作成用CSV
 │   │
 │   ├── phase3-routing/           # Phase3: ルーティング変更
 │   │   ├── Set-PostfixRouting.sh        # Postfix transport変更
@@ -189,6 +196,24 @@ sudo bash inventory/collect_smtp_dmz.sh /tmp/inventory
 ```
 
 ### Phase 2: EXO箱作り
+
+#### 2-0. ユーザー作成（検証環境または新規ユーザーの場合）
+
+CSVテンプレートは `templates/` フォルダを参照。本番用・検証用で同じ形式で使い回せます。
+
+```powershell
+# パターンA: ADに作成 → Entra ID Connect同期
+.\execution\phase2-setup\New-ADUsersFromCsv.ps1 `
+  -CsvPath templates\sample_users_ad.csv `
+  -TargetOU "OU=Users,DC=contoso,DC=local" `
+  -SetMailAttributes
+
+# パターンB: Entra IDに直接作成（クラウドオンリー）
+# 既存ユーザーはスキップし、ライセンスグループに追加
+.\execution\phase2-setup\New-EntraUsersFromCsv.ps1 `
+  -CsvPath templates\sample_users_entra.csv `
+  -LicenseGroupName "EXO-License-Pilot"
+```
 
 #### 2-1. SMTP重複チェック
 
