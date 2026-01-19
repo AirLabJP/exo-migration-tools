@@ -83,7 +83,7 @@ Write-Host ""
 # 解析関数
 #----------------------------------------------------------------------
 
-function Parse-ReceivedHeader {
+function ConvertFrom-ReceivedHeader {
     param([string]$HeaderText)
     
     $receivedHeaders = [regex]::Matches($headerText, "(?m)^Received:\s*(.+)$")
@@ -115,7 +115,7 @@ function Parse-ReceivedHeader {
     return $hops
 }
 
-function Parse-AuthenticationResults {
+function ConvertFrom-AuthenticationResults {
     param([string]$HeaderText)
     
     $authResults = @{
@@ -156,7 +156,7 @@ function Parse-AuthenticationResults {
     return $authResults
 }
 
-function Parse-BasicInfo {
+function ConvertFrom-BasicInfo {
     param([string]$HeaderText)
     
     $info = @{
@@ -201,7 +201,7 @@ function Parse-BasicInfo {
     return $info
 }
 
-function Detect-Loop {
+function Find-MailLoop {
     param([array]$Hops)
     
     $hostCounts = @{}
@@ -226,16 +226,16 @@ function Detect-Loop {
 #----------------------------------------------------------------------
 
 # 基本情報の抽出
-$basicInfo = Parse-BasicInfo -HeaderText $headerText
+$basicInfo = ConvertFrom-BasicInfo -HeaderText $headerText
 
 # Receivedヘッダーの解析
-$hops = Parse-ReceivedHeader -HeaderText $headerText
+$hops = ConvertFrom-ReceivedHeader -HeaderText $headerText
 
 # 認証結果の抽出
-$authResults = Parse-AuthenticationResults -HeaderText $headerText
+$authResults = ConvertFrom-AuthenticationResults -HeaderText $headerText
 
 # ループ検出
-$loopInfo = Detect-Loop -Hops $hops
+$loopInfo = Find-MailLoop -Hops $hops
 
 # 遅延計算（簡易版）
 $delays = @()

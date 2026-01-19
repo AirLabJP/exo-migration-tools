@@ -177,7 +177,8 @@ if (-not (Test-Path $aadConnectPath)) {
 }
 
 # 資格情報の準備
-$credential = New-Object System.Management.Automation.PSCredential($GlobalAdminUPN, $GlobalAdminPassword)
+# 資格情報の準備（将来の自動化用にコメントアウト）
+# $credential = New-Object System.Management.Automation.PSCredential($GlobalAdminUPN, $GlobalAdminPassword)
 
 # 設定スクリプトの実行（簡易版）
 # 注意: 実際の設定はGUIまたは詳細な設定スクリプトが必要

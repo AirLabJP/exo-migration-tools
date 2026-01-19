@@ -154,7 +154,7 @@ foreach ($tc in $testCases) {
         -ErrorAction SilentlyContinue
       
       # 経路を分析
-      $actualPath = Analyze-MailPath -Trace $latestTrace -Detail $traceDetail
+      $actualPath = Get-MailPathAnalysis -Trace $latestTrace -Detail $traceDetail
       $pathMatch = ($actualPath -eq $tc.ExpectedPath) -or ($tc.ExpectedPath -eq "ANY")
       $statusMatch = ($latestTrace.Status -eq $tc.ExpectedResult)
       
@@ -226,7 +226,7 @@ foreach ($tc in $testCases) {
 #----------------------------------------------------------------------
 # 経路分析関数
 #----------------------------------------------------------------------
-function Analyze-MailPath {
+function Get-MailPathAnalysis {
   param($Trace, $Detail)
   
   # 簡易的な経路判定

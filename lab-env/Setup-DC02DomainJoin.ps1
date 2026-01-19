@@ -70,7 +70,7 @@ Write-Log "DC01 IP: $Dc01IPAddress"
 Write-Log ""
 Write-Log "[1/5] DC01への接続確認..."
 try {
-    $ping = Test-Connection -ComputerName $Dc01IPAddress -Count 2 -ErrorAction Stop
+    $null = Test-Connection -ComputerName $Dc01IPAddress -Count 2 -ErrorAction Stop
     Write-Log "      → DC01への接続成功"
 } catch {
     Write-Log "エラー: DC01への接続に失敗しました: $_"

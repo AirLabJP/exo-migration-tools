@@ -148,10 +148,10 @@ function Add-CheckResult {
   # 全体ステータス更新
   if ($Status -eq "FAIL") {
     $results.OverallStatus = "FAIL"
-    $results.Errors += "$Category/$CheckName: $Message"
+    $results.Errors += "${Category}/${CheckName}: $Message"
   }
   if ($Status -eq "WARN") {
-    $results.Warnings += "$Category/$CheckName: $Message"
+    $results.Warnings += "${Category}/${CheckName}: $Message"
   }
 }
 

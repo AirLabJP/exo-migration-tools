@@ -119,16 +119,16 @@ function Get-SchemaVersion {
   return $result
 }
 
-function Invoke-Setup([string]$SetupExe, [string[]]$Args, [string]$LogFile) {
-  $argLine = $Args -join " "
+function Invoke-Setup([string]$SetupExe, [string[]]$Arguments, [string]$LogFile) {
+  $argLine = $Arguments -join " "
   Write-Host "      → 実行: `"$SetupExe`" $argLine"
-  $p = Start-Process -FilePath $SetupExe -ArgumentList $Args -Wait -PassThru -NoNewWindow
+  $p = Start-Process -FilePath $SetupExe -ArgumentList $Arguments -Wait -PassThru -NoNewWindow
   $exit = $p.ExitCode
   "EXITCODE=$exit`r`nCMD=`"$SetupExe`" $argLine" | Out-File -FilePath $LogFile -Encoding UTF8
   if ($exit -ne 0) { throw "Setup.exe が失敗しました（ExitCode=$exit）。$LogFile および C:\ExchangeSetupLogs を確認してください。" }
 }
 
-function Force-Replication([string]$OutDir, [int]$Attempt) {
+function Start-ForcedReplication([string]$OutDir, [int]$Attempt) {
   $repLog = Join-Path $OutDir "repadmin_syncall_$Attempt.txt"
   Write-Host "      → レプリケーション強制実行中..."
   
@@ -237,7 +237,7 @@ try {
     -Args @($license, "/PrepareSchema") `
     -LogFile (Join-Path $OutDir "01_PrepareSchema_cmd.txt")
   
-  Force-Replication -OutDir $OutDir -Attempt 1
+  Start-ForcedReplication -OutDir $OutDir -Attempt 1
   
   #----------------------------------------------------------------------
   # PrepareAD
@@ -249,7 +249,7 @@ try {
     -Args @($license, "/PrepareAD", "/OrganizationName:`"$OrganizationName`"") `
     -LogFile (Join-Path $OutDir "02_PrepareAD_cmd.txt")
   
-  Force-Replication -OutDir $OutDir -Attempt 2
+  Start-ForcedReplication -OutDir $OutDir -Attempt 2
   
   #----------------------------------------------------------------------
   # PrepareAllDomains（オプション）
@@ -262,7 +262,7 @@ try {
       -Args @($license, "/PrepareAllDomains") `
       -LogFile (Join-Path $OutDir "03_PrepareAllDomains_cmd.txt")
     
-    Force-Replication -OutDir $OutDir -Attempt 3
+    Start-ForcedReplication -OutDir $OutDir -Attempt 3
   } else {
     Write-Host ""
     Write-Host "[5/6] PrepareAllDomains をスキップ（-PrepareAllDomains オプションなし）"
