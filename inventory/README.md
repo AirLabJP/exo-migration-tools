@@ -8,13 +8,14 @@ Exchange Online（EXO）への移行に必要な現地調査データを収集�
 
 | スクリプト | 対象環境 | 説明 |
 |----------|---------|------|
-| **Collect-ADInventory.ps1** | AD Domain Controller | ADユーザー・グループのメール属性、Exchangeスキーマ拡張状態 |
-| **Collect-DNSRecords.ps1** | DNS参照可能な環境 | MX/SPF/DKIM/DMARC/TLS-RPT/MTA-STS/BIMI、弱点フラグ付き |
-| **Collect-EXOInventory.ps1** | Exchange Online接続可能な環境 | EXO受信者、コネクタ、EOP/Defenderポリシー、権限、転送設定 |
-| **Collect-EntraInventory.ps1** | Entra ID接続可能な環境 | ユーザー、ライセンス、同期状態 |
-| **collect_courier_imap.sh** | Courier IMAP / Dovecot サーバー | メールボックス一覧、ユーザー、設定ファイル |
-| **collect_postfix.sh** | Postfix サーバー | メールフロー設定、サイズ制限、TLS設定 |
-| **collect_smtp_dmz.sh** | DMZ SMTP サーバー | MTA検出、メールフロー、ネットワーク設定 |
+| **Collect-ADInventory.ps1** | AD Domain Controller | ADユーザー・グループ・連絡先のメール属性、SMTP重複検出、Exchangeスキーマ拡張状態 |
+| **Collect-DNSRecords.ps1** | DNS参照可能な環境 | MX/SPF/DKIM/DMARC/TLS-RPT/MTA-STS/BIMI、品質チェック、弱点フラグ付き |
+| **Collect-EXOInventory.ps1** | Exchange Online接続可能な環境 | EXO受信者、コネクタ、EOP/Defenderポリシー・ルール、権限、転送設定、InboxRule外部転送 |
+| **Collect-EntraInventory.ps1** | Entra ID接続可能な環境 | ユーザー、ライセンス、同期状態、Exchange Online有効判定、ドメイン一覧 |
+| **Collect-EntraConnectInventory.ps1** | Entra Connectサーバー | ADSyncスケジューラ、コネクタ、同期ルール、属性フロー、sourceAnchor、同期状況 |
+| **collect_courier_imap.sh** | Courier IMAP / Dovecot サーバー | メールボックス一覧、ユーザー突合、SQL/LDAP設定マスク |
+| **collect_postfix.sh** | Postfix サーバー | メールフロー設定、postmulti対応、マップファイル自動検出 |
+| **collect_smtp_dmz.sh** | DMZ SMTP サーバー | MTA検出、ファイアウォール詳細、ネットワーク設定 |
 
 ---
 
@@ -61,13 +62,24 @@ Install-Module -Name ExchangeOnlineManagement -Force -AllowClobber
 
 #### Collect-EntraInventory.ps1
 
-- **モジュール**: `Microsoft.Graph.Users`, `Microsoft.Graph.Identity.DirectoryManagement`
-- **権限**: `User.Read.All`, `Directory.Read.All`, `Organization.Read.All`
+- **モジュール**: `Microsoft.Graph.Users`, `Microsoft.Graph.Identity.DirectoryManagement`, `Microsoft.Graph.Groups`
+- **権限**: `User.Read.All`, `Directory.Read.All`, `Organization.Read.All`, `Domain.Read.All`, `Group.Read.All`
 - **実行場所**: インターネット接続可能な環境
 
 ```powershell
 # モジュールインストール
 Install-Module -Name Microsoft.Graph -Force -AllowClobber
+```
+
+#### Collect-EntraConnectInventory.ps1
+
+- **モジュール**: `ADSync`（Entra Connectサーバーにインストール済み）
+- **権限**: 管理者権限
+- **実行場所**: Entra Connect（Azure AD Connect）サーバー上
+
+```powershell
+# モジュールは Entra Connect インストール時に自動的にインストールされます
+# Import-Module ADSync でインポート可能
 ```
 
 ### Shellスクリプト共通
@@ -92,6 +104,9 @@ Install-Module -Name Microsoft.Graph -Force -AllowClobber
 # AD棚卸し
 .\Collect-ADInventory.ps1 -OutRoot C:\temp\inventory
 
+# AD棚卸し（検索ベース指定、無効ユーザー含む）
+.\Collect-ADInventory.ps1 -SearchBase "OU=Tokyo,DC=contoso,DC=com" -IncludeDisabled
+
 # DNS棚卸し（ドメインリストファイル指定）
 .\Collect-DNSRecords.ps1 -DomainsFile domains.txt -OutRoot C:\temp\inventory
 
@@ -101,8 +116,17 @@ Install-Module -Name Microsoft.Graph -Force -AllowClobber
 # EXO棚卸し
 .\Collect-EXOInventory.ps1 -OutRoot C:\temp\inventory
 
+# EXO棚卸し（EXOv3 REST API使用）
+.\Collect-EXOInventory.ps1 -OutRoot C:\temp\inventory -UseEXOv3
+
 # Entra ID棚卸し
 .\Collect-EntraInventory.ps1 -OutRoot C:\temp\inventory
+
+# Entra ID棚卸し（大規模環境向け逐次CSV出力）
+.\Collect-EntraInventory.ps1 -OutRoot C:\temp\inventory -StreamToCsv
+
+# Entra Connect棚卸し（Entra Connectサーバー上で実行）
+.\Collect-EntraConnectInventory.ps1 -OutRoot C:\temp\inventory
 ```
 
 ### Shellスクリプト
@@ -197,11 +221,30 @@ sudo bash collect_smtp_dmz.sh /tmp/inventory
 
 | ファイル | 形式 | 説明 |
 |---------|------|------|
-| `org.json` | JSON | テナント情報 |
+| `org.json` | JSON | テナント情報（DirSync状態含む） |
+| `domains.csv` / `.json` | CSV/JSON | ドメイン一覧 |
 | `subscribed_skus.csv` | 要約CSV | ライセンスSKU一覧 |
 | `subscribed_skus.json` / `.xml` | JSON/XML | ライセンスSKU詳細 |
-| `users_license.csv` | 要約CSV | ユーザー×ライセンス対応表 |
+| `users_license.csv` | 要約CSV | ユーザー×ライセンス対応表（HasExoEnabled含む） |
 | `users_license.json` / `.xml` | JSON/XML | ユーザー詳細データ |
+| `users_licence_issues.csv` | CSV | ライセンス問題ユーザー |
+| `license_groups.csv` | CSV | ライセンス割当グループ |
+
+#### Collect-EntraConnectInventory.ps1
+
+| ファイル | 形式 | 説明 |
+|---------|------|------|
+| `version.json` | JSON | Entra Connectバージョン |
+| `scheduler.json` | JSON | スケジューラ状態（同期間隔、有効/無効） |
+| `global_settings.json` | JSON | グローバル設定 |
+| `connectors.csv` / `.json` | CSV/JSON | AD/Entra ID Connectors構成 |
+| `sync_rules.csv` / `.json` | CSV/JSON | 同期ルール一覧 |
+| `attribute_flows_mail.csv` / `.json` | CSV/JSON | mail/proxyAddresses/mailNickname/targetAddress属性フロー |
+| `source_anchor.json` | JSON | sourceAnchor設定（msDS-ConsistencyGuid or objectGUID） |
+| `run_history.csv` | CSV | 直近の同期実行履歴 |
+| `run_history_errors.csv` | CSV | 同期エラー一覧 |
+| `pending_exports.csv` | CSV | 保留中のエクスポート |
+| `server_config/` | DIR | Export-ADSyncServerConfiguration出力 |
 
 ### Shellスクリプト
 
