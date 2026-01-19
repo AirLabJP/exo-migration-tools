@@ -225,8 +225,8 @@ Exchange Online（Internal Relay）→ 内部DMZ SMTP → Courier IMAP
 
 | # | 項目 | 内容 |
 |---|---|---|
-| 1 | 移行対象ドメイン | **1ドメイン**（パイロット、お客様選定） |
-| 2 | 移行対象ユーザー | パイロットドメインのユーザー（お客様提供リストに基づく） |
+| 1 | 移行対象ドメイン | **1ドメイン**（パイロット、お客様側で選定済み・未共有） |
+| 2 | 移行対象ユーザー | パイロットドメインのユーザー（お客様提供リストに基づく・未受領） |
 | 3 | Exchange Online環境構築 | Accepted Domain、コネクタ設定 |
 | 4 | コネクタ設定 | Inbound×1、Outbound×2（GWC、内部DMZフォールバック） |
 | 5 | ADスキーマ拡張 | Exchange属性の追加 |
@@ -334,6 +334,36 @@ ID運用整理（メールアドレスの命名規則、ライフサイクル管
 | 3 | 統合アカウントシステムは変更不可 | 移行対象データはお客様提供、影響確認は実施 |
 | 4 | FireEye設定は変更しない | MX変更なし、AWS DMZ SMTPでドメイン振り分け |
 | 5 | WBS 2ヶ月でパイロット完了が求められる | タイトスケジュール、準備が重要 |
+
+### 8.1 パラメータ化が必要な項目（お客様依存）
+
+以下の項目はお客様からの情報提供待ちであり、受領後に設計・スクリプトに反映する：
+
+| # | 項目 | 現状 | 影響範囲 |
+|---|---|---|---|
+| 1 | **パイロットドメイン** | お客様側で選定済み・未共有 | Accepted Domain設定、transport設定、テスト対象 |
+| 2 | **移行対象ユーザー一覧** | 未受領 | AD属性投入CSV、ライセンスグループ追加 |
+| 3 | **ライセンスグループ名/ID** | 未決定 | Add-UsersToLicenseGroup.ps1のパラメータ |
+| 4 | **GuardianWall Cloudのスマートホスト** | 未確認 | Outbound Connector設定 |
+| 5 | **内部DMZ SMTPのIPアドレス/FQDN** | 未確認 | Outbound Connector設定 |
+| 6 | **AWS DMZ SMTPのIPアドレス** | 未確認 | Inbound Connector設定 |
+
+### 8.2 フェーズごとに繰り返す作業
+
+本PJ（パイロット）およびPhase 2以降の本格展開で、ドメインごとに以下の作業を繰り返す：
+
+| # | 作業 | 対象 | スクリプト |
+|---|---|---|---|
+| 1 | ユーザー一覧CSV作成 | 移行対象ドメインのユーザー | （お客様作業） |
+| 2 | AD属性投入 | mail、proxyAddresses | Set-ADMailAddressesFromCsv.ps1 |
+| 3 | Entra ID Connect同期 | 差分同期 | Start-ADSyncSyncCycle |
+| 4 | ライセンスグループへのユーザー追加 | 移行対象ユーザー | Add-UsersToLicenseGroup.ps1 |
+| 5 | EXO Accepted Domain Type変更 | InternalRelay化 | Set-AcceptedDomainType.ps1 |
+| 6 | AWS DMZ SMTP transport設定変更 | 対象ドメイン→EXO向け | Set-DmzSmtpRouting.sh |
+| 7 | （オプション）Postfix transport設定変更 | 必要に応じて | Set-PostfixRouting.sh |
+| 8 | メールフロー検証 | 6パターン送信テスト | Test-MailFlowMatrix.ps1 |
+| 9 | 安定稼働確認 | Message Trace監視 | （手動） |
+| 10 | 全ユーザー移行完了後：Authoritative化 | 対象ドメイン | Set-AcceptedDomainType.ps1 |
 
 ---
 
