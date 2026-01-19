@@ -2,6 +2,16 @@
 
 Linux（Postfix/Courier IMAP）ベースのメールシステムからExchange Onlineへの移行に必要なスクリプト群。
 
+## ドキュメント
+
+| ドキュメント | 内容 |
+|-------------|------|
+| [permissions.md](docs/permissions.md) | 各スクリプトに必要な権限一覧 |
+| [rollback_limits.md](docs/rollback_limits.md) | 切り戻しの限界（戻せるもの・戻せないもの） |
+| [要件定義書（案）](docs/ExchangeOnline移行プロジェクト要件定義書（案）.md) | プロジェクト要件 |
+| [基本設計書（案）](docs/ExchangeOnline移行プロジェクト基本設計書（案）.md) | システム設計 |
+| [実践ガイド](docs/ExchangeOnline移行プロジェクト実践ガイド.md) | 移行戦略・メールフロー設計 |
+
 ## 想定環境
 
 ```
@@ -104,11 +114,58 @@ exo-migration-tools/
 ├── test-env/                     # スクリプトテスト環境
 │   └── docker-compose.yml
 │
+├── config/                       # 環境設定ファイル ★NEW
+│   ├── README.md
+│   └── sample_environment.yaml   # 設定ファイルテンプレート
+│
 └── docs/                         # ドキュメント
+    ├── permissions.md            # 必要な権限一覧 ★NEW
+    ├── rollback_limits.md        # 切り戻しの限界 ★NEW
     ├── ExchangeOnline移行プロジェクト実践ガイド.md
     ├── ExchangeOnline移行プロジェクト要件定義書（案）.md
+    ├── ExchangeOnline移行プロジェクト基本設計書（案）.md
     └── ExchangeOnline移行プロジェクト_お客様ヒアリング事項（スライド用）.md
 ```
+
+## 設計方針
+
+### 冪等性（再実行可能性）
+
+各スクリプトは**再実行しても安全**に設計されています。
+
+| スクリプト | 再実行時の挙動 |
+|-----------|---------------|
+| `New-ADUsersFromCsv.ps1` | 既存ユーザーはスキップ |
+| `New-EntraUsersFromCsv.ps1` | 既存ユーザーはスキップ、グループ追加のみ実行 |
+| `Set-ADMailAddressesFromCsv.ps1` | 既存値を上書き（WhatIfで事前確認推奨） |
+| `Add-UsersToLicenseGroup.ps1` | 既存メンバーはスキップ |
+| `New-EXOConnectors.ps1` | 既存コネクタがあればエラー（手動確認推奨） |
+| `Set-AcceptedDomainType.ps1` | 変更なしの場合はスキップ |
+| Bash系（transport変更） | バックアップを取って上書き |
+
+### WhatIfモード
+
+破壊的操作を行うスクリプトは `-WhatIfMode` スイッチをサポートしています。
+**本番実行前に必ず WhatIf で確認してください。**
+
+```powershell
+# WhatIfで確認（実際には変更しない）
+.\script.ps1 -SomeParam "value" -WhatIfMode
+
+# 本番実行
+.\script.ps1 -SomeParam "value"
+```
+
+### 出力形式
+
+すべてのスクリプトは以下の形式で出力します：
+
+| 出力 | 形式 | 用途 |
+|------|------|------|
+| 実行ログ | `run.log` | トランスクリプト、デバッグ |
+| 結果CSV | `results.csv` | Excel等で確認 |
+| 結果JSON | `*.json` | 機械処理、差分比較 |
+| サマリー | `summary.txt` | 簡易レポート |
 
 ## 使用順序
 

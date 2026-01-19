@@ -1,0 +1,157 @@
+# ============================================================
+# Exchange Online 移行プロジェクト - 環境設定ファイル（サンプル）
+# ============================================================
+#
+# このファイルをコピーして、実際の環境に合わせて編集してください。
+# 例: cp sample_environment.yaml production.yaml
+#
+# 各スクリプトはこの設定ファイルを参照するか、
+# コマンドラインパラメータで直接値を指定できます。
+#
+
+# ------------------------------------------------------------
+# プロジェクト情報
+# ------------------------------------------------------------
+project:
+  name: "○○株式会社 EXO移行プロジェクト"
+  phase: "pilot"  # pilot / phase2 / production
+  start_date: "2026-05-01"
+
+# ------------------------------------------------------------
+# Microsoft 365 / Entra ID
+# ------------------------------------------------------------
+microsoft365:
+  tenant_id: "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+  tenant_domain: "contoso.onmicrosoft.com"
+  
+  # Exchange Online MXエンドポイント
+  # 通常は {tenant}.mail.protection.outlook.com
+  exo_mx_endpoint: "contoso-co-jp.mail.protection.outlook.com"
+
+# ------------------------------------------------------------
+# 移行対象ドメイン
+# ------------------------------------------------------------
+# パイロットでは1ドメイン、Phase 2以降で追加
+target_domains:
+  - "example.co.jp"
+  # - "subsidiary.co.jp"  # Phase 2で追加
+
+# ------------------------------------------------------------
+# ライセンスグループ
+# ------------------------------------------------------------
+license_group:
+  # 移行中は静的グループを使用
+  name: "EXO-License-Pilot"
+  object_id: ""  # 作成後に記入
+  
+  # 移行完了後に動的グループに切り替え
+  # dynamic_group_name: "EXO-License-All"
+
+# ------------------------------------------------------------
+# Active Directory
+# ------------------------------------------------------------
+active_directory:
+  domain: "contoso.local"
+  domain_controller: "dc01.contoso.local"
+  schema_master: "dc01.contoso.local"
+  
+  # ユーザー作成先OU
+  target_ou: "OU=Users,OU=Corp,DC=contoso,DC=local"
+  
+  # テストユーザー作成先OU
+  test_ou: "OU=TestUsers,OU=Corp,DC=contoso,DC=local"
+
+# ------------------------------------------------------------
+# メールセキュリティ
+# ------------------------------------------------------------
+mail_security:
+  # GuardianWall Cloud
+  guardianwall:
+    smart_host: "gwc.example.com"
+    port: 25
+    tls_required: true
+  
+  # FireEye（受信セキュリティ）
+  fireeye:
+    # 設定変更なし（参考情報）
+    mx_record: "mx.fireeye.example.com"
+
+# ------------------------------------------------------------
+# SMTP サーバー
+# ------------------------------------------------------------
+smtp_servers:
+  # AWS DMZ SMTP（外部受口）
+  aws_dmz:
+    hostname: "dmz-smtp.aws.example.com"
+    ip_address: "203.0.113.10"
+    transport_file: "/etc/postfix/transport"
+  
+  # 内部DMZ SMTP（フォールバック）
+  onprem_dmz:
+    hostname: "dmz-smtp.internal.example.co.jp"
+    ip_address: "10.0.0.50"
+    transport_file: "/etc/postfix/transport"
+  
+  # メインPostfix（SMTPハブ）
+  postfix_hub:
+    hostname: "postfix.internal.example.co.jp"
+    ip_address: "10.0.0.10"
+    transport_file: "/etc/postfix/transport"
+  
+  # Courier IMAP
+  courier_imap:
+    hostname: "imap.internal.example.co.jp"
+    ip_address: "10.0.0.20"
+
+# ------------------------------------------------------------
+# EXO コネクタ名
+# ------------------------------------------------------------
+exo_connectors:
+  outbound_gwc: "To-GuardianWall-Cloud"
+  outbound_fallback: "To-OnPrem-DMZ-Fallback"
+  inbound_aws: "From-AWS-DMZ-SMTP"
+
+# ------------------------------------------------------------
+# Transport Rule 名
+# ------------------------------------------------------------
+transport_rules:
+  external_via_gwc: "Route-External-Via-GWC"
+  internal_fallback: "Route-Internal-Unmigrated-Via-Fallback"
+  block_forwarding: "Block-External-Forwarding"
+  loop_marker: "Add-EXO-Loop-Marker"
+
+# ------------------------------------------------------------
+# 出力先
+# ------------------------------------------------------------
+output:
+  # 各スクリプトの出力先ベースディレクトリ
+  base_dir: "C:\\EXO-Migration\\Output"
+  
+  # 棚卸し結果
+  inventory_dir: "C:\\EXO-Migration\\Output\\inventory"
+  
+  # 分析結果
+  analysis_dir: "C:\\EXO-Migration\\Output\\analysis"
+  
+  # 実行ログ
+  execution_dir: "C:\\EXO-Migration\\Output\\execution"
+  
+  # スナップショット
+  snapshot_dir: "C:\\EXO-Migration\\Output\\snapshots"
+
+# ------------------------------------------------------------
+# 検証環境（lab-env用）
+# ------------------------------------------------------------
+lab:
+  enabled: false  # 検証環境の場合 true
+  domain: "lab.local"
+  test_domain: "test.contoso.co.jp"
+  entra_tenant_id: ""  # 試用版テナントID
+
+# ------------------------------------------------------------
+# 注意事項
+# ------------------------------------------------------------
+# - このファイルには機密情報（パスワード等）を含めないでください
+# - パスワードは実行時にSecureStringで入力してください
+# - このファイルはGitにコミットしても良いですが、
+#   実際の環境値を含むファイルは .gitignore に追加してください
