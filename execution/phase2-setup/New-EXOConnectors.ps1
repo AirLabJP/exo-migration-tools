@@ -4,12 +4,12 @@
 
 .DESCRIPTION
     EXO移行に必要な3つのコネクタを作成します：
-    - Outbound #1: GuardianWall Cloud向け（外部送信の添付URL化）
+    - Outbound #1: 送信セキュリティサービス向け（外部送信の添付URL化）
     - Outbound #2: 内部DMZ SMTP向け（未移行ユーザーへのフォールバック）
     - Inbound #1: AWS DMZ SMTPからの受信許可
 
-.PARAMETER GwcSmartHost
-    GuardianWall CloudのSMTPホスト名
+.PARAMETER MailSecurityHost
+    送信セキュリティサービスのSMTPホスト名
 
 .PARAMETER OnPremDmzSmtpHost
     内部DMZ SMTPサーバーのホスト名（FQDN）
@@ -25,7 +25,7 @@
 
 .EXAMPLE
     .\New-EXOConnectors.ps1 `
-        -GwcSmartHost "gwc.example.com" `
+        -MailSecurityHost "mailsecurity.example.com" `
         -OnPremDmzSmtpHost "dmz-smtp.internal.example.co.jp" `
         -AwsDmzSmtpIP "203.0.113.10" `
         -TargetDomainsFile ".\domains.txt"
@@ -42,7 +42,7 @@
 
 param(
     [Parameter(Mandatory = $true)]
-    [string]$GwcSmartHost,
+    [string]$MailSecurityHost,
 
     [Parameter(Mandatory = $true)]
     [string]$OnPremDmzSmtpHost,
@@ -162,11 +162,11 @@ foreach ($c in $existingInbound) {
 }
 
 # ------------------------------------------------------------
-# Outbound #1: GuardianWall Cloud向け
+# Outbound #1: 送信セキュリティサービス向け
 # ------------------------------------------------------------
-Write-Step "Outbound Connector #1: GuardianWall Cloud向け（外部送信）"
+Write-Step "Outbound Connector #1: 送信セキュリティサービス向け（外部送信）"
 
-$gwcConnectorName = "To-GuardianWall-Cloud"
+$gwcConnectorName = "To-MailSecurity-Service"
 
 if ($existingOutbound | Where-Object { $_.Name -eq $gwcConnectorName }) {
     Write-Warn "同名のコネクタが既に存在します: $gwcConnectorName"
@@ -175,7 +175,7 @@ if ($existingOutbound | Where-Object { $_.Name -eq $gwcConnectorName }) {
 else {
     Write-Info "作成予定:"
     Write-Host "  名前: $gwcConnectorName"
-    Write-Host "  SmartHost: $GwcSmartHost"
+    Write-Host "  SmartHost: $MailSecurityHost"
     Write-Host "  用途: 外部宛メールをGWC経由で送信（添付URL化）"
     Write-Host "  対象: 全外部ドメイン（トランスポートルールでスコープ制御推奨）"
 
@@ -184,7 +184,7 @@ else {
             New-OutboundConnector `
                 -Name $gwcConnectorName `
                 -ConnectorType Partner `
-                -SmartHosts $GwcSmartHost `
+                -SmartHosts $MailSecurityHost `
                 -TlsSettings EncryptionOnly `
                 -UseMXRecord $false `
                 -RecipientDomains "*" `
@@ -304,7 +304,7 @@ Write-Host "【作成したコネクタ】" -ForegroundColor Cyan
 Write-Host "┌────────────────────────────────────────────────────────────┐"
 Write-Host "│ # │ 種類     │ 名前                      │ 宛先/送信元    │"
 Write-Host "├───┼──────────┼───────────────────────────┼────────────────┤"
-Write-Host "│ 1 │ Outbound │ To-GuardianWall-Cloud     │ $GwcSmartHost"
+Write-Host "│ 1 │ Outbound │ To-MailSecurity-Service     │ $MailSecurityHost"
 Write-Host "│ 2 │ Outbound │ To-OnPrem-DMZ-Fallback    │ $OnPremDmzSmtpHost"
 Write-Host "│ 3 │ Inbound  │ From-AWS-DMZ-SMTP         │ $AwsDmzSmtpIP"
 Write-Host "└────────────────────────────────────────────────────────────┘"

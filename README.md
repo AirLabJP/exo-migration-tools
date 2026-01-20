@@ -316,7 +316,7 @@ CSVテンプレートは `templates/` フォルダを参照。本番用・検証
 ```powershell
 # WhatIfで確認
 .\execution\phase2-setup\New-EXOConnectors.ps1 `
-  -GwcSmartHost "gwc.example.com" `
+  -MailSecurityHost "mailsecurity.example.com" `  # 送信セキュリティ導入時のみ
   -OnPremDmzSmtpHost "dmz-smtp.internal.example.co.jp" `
   -AwsDmzSmtpIP "203.0.113.10" `
   -TargetDomainsFile domains.txt `
@@ -324,7 +324,7 @@ CSVテンプレートは `templates/` フォルダを参照。本番用・検証
 
 # 本番実行
 .\execution\phase2-setup\New-EXOConnectors.ps1 `
-  -GwcSmartHost "gwc.example.com" `
+  -MailSecurityHost "mailsecurity.example.com" `  # 送信セキュリティ導入時のみ
   -OnPremDmzSmtpHost "dmz-smtp.internal.example.co.jp" `
   -AwsDmzSmtpIP "203.0.113.10" `
   -TargetDomainsFile domains.txt
@@ -348,7 +348,7 @@ CSVテンプレートは `templates/` フォルダを参照。本番用・検証
 作成されるルール:
 - **Block-ExternalForwarding**: 外部への自動転送をブロック
 - **Add-LoopPreventionHeader**: ループ防止ヘッダを付与
-- **Route-ExternalViaGWC**: 外部宛をGuardianWall Cloud経由でルーティング
+- **Route-ExternalViaMailSecurity**: 外部宛を送信セキュリティサービス経由でルーティング（導入時）
 
 #### 2-5. ライセンス付与用グループへのユーザー追加
 
@@ -480,7 +480,7 @@ sudo bash execution/rollback/Restore-PostfixRouting.sh --latest
 
 | # | 種類 | 名前 | 用途 |
 |---|---|---|---|
-| 1 | Outbound | To-GuardianWall-Cloud | 外部宛の添付URL化 |
+| 1 | Outbound | To-MailSecurity-Service | 外部宛の添付URL化（導入時）（送信セキュリティ導入時） |
 | 2 | Outbound | To-OnPrem-DMZ-Fallback | 未移行ユーザーへのフォールバック |
 | 3 | Inbound | From-AWS-DMZ-SMTP | AWS DMZ SMTPからの受信許可 |
 
@@ -576,7 +576,7 @@ user2@example.local,user2,user2@example.co.jp,
 ```csv
 TestID,From,To,Subject,ExpectedPath,ExpectedResult
 TC001,user1@contoso.co.jp,user2@contoso.co.jp,内部宛テスト,EXO_INTERNAL,Delivered
-TC002,user1@contoso.co.jp,external@gmail.com,外部宛テスト,EXO_GWC_INTERNET,Delivered
+TC002,user1@contoso.co.jp,external@gmail.com,外部宛テスト,EXO_MAILSEC_INTERNET,Delivered
 TC003,external@gmail.com,user1@contoso.co.jp,外部からの受信テスト,INTERNET_FIREEYE_DMZ_EXO,Delivered
 TC004,user1@contoso.co.jp,unmigrated@contoso.co.jp,未移行ユーザー宛テスト,EXO_INTERNALRELAY_DMZ_COURIER,Delivered
 ```

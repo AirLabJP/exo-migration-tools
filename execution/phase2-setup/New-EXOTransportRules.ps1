@@ -5,17 +5,17 @@
 .DESCRIPTION
     EXO移行に必要なトランスポートルールを作成します：
     
-    1. Route-External-Via-GWC: 外部宛メールをGuardianWall Cloud経由でルーティング
+    1. Route-External-Via-MailSecurity: 外部宛メールを送信セキュリティサービス経由でルーティング
     2. Block-External-Forwarding: 外部への自動転送をブロック
     3. Add-EXO-Loop-Marker: フォールバック経路のループ防止用ヘッダ付与
     
     【設計思想】
-    - 外部宛メールは添付ファイルURL化のためGWC経由
+    - 外部宛メールは添付ファイルURL化のためMailSecurity経由
     - 情報漏洩防止のため外部転送をブロック
     - メールループを設計段階で防止（偶然に頼らない）
 
 .PARAMETER GwcConnectorName
-    GuardianWall Cloud向けOutbound Connector名
+    送信セキュリティサービス向けOutbound Connector名
 
 .PARAMETER FallbackConnectorName
     内部DMZ SMTP向けOutbound Connector名（フォールバック用）
@@ -32,7 +32,7 @@
 
     # コネクタ名をカスタマイズ
     .\New-EXOTransportRules.ps1 `
-        -GwcConnectorName "To-GuardianWall-Cloud" `
+        -GwcConnectorName "To-MailSecurity-Service" `
         -FallbackConnectorName "To-OnPrem-DMZ-Fallback"
 
 .NOTES
@@ -48,7 +48,7 @@
 
 param(
     [Parameter(Mandatory = $false)]
-    [string]$GwcConnectorName = "To-GuardianWall-Cloud",
+    [string]$GwcConnectorName = "To-MailSecurity-Service",
 
     [Parameter(Mandatory = $false)]
     [string]$FallbackConnectorName = "To-OnPrem-DMZ-Fallback",
@@ -135,10 +135,10 @@ $gwcConnector = Get-OutboundConnector -Identity $GwcConnectorName -ErrorAction S
 $fallbackConnector = Get-OutboundConnector -Identity $FallbackConnectorName -ErrorAction SilentlyContinue
 
 if ($gwcConnector) {
-    Write-Success "GWCコネクタ確認済み: $GwcConnectorName"
+    Write-Success "MailSecurityコネクタ確認済み: $GwcConnectorName"
 } else {
-    Write-Warn "GWCコネクタが見つかりません: $GwcConnectorName"
-    Write-Warn "GWCルーティングルールはスキップされます。"
+    Write-Warn "MailSecurityコネクタが見つかりません: $GwcConnectorName"
+    Write-Warn "MailSecurityルーティングルールはスキップされます。"
 }
 
 if ($fallbackConnector) {
@@ -157,7 +157,7 @@ $existingRules = Get-TransportRule -ErrorAction SilentlyContinue
 Write-Info "既存ルール数: $($existingRules.Count)"
 
 $ruleNames = @(
-    "Route-External-Via-GWC",
+    "Route-External-Via-MailSecurity",
     "Block-External-Forwarding",
     "Add-EXO-Loop-Marker"
 )
@@ -173,18 +173,18 @@ foreach ($name in $ruleNames) {
 $results = @()
 
 # ------------------------------------------------------------
-# ルール1: 外部宛メールをGWC経由でルーティング
+# ルール1: 外部宛メールをMailSecurity経由でルーティング
 # ------------------------------------------------------------
-Write-Step "ルール1: Route-External-Via-GWC（外部宛→GWC経由）"
+Write-Step "ルール1: Route-External-Via-MailSecurity（外部宛→MailSecurity経由）"
 
-$rule1Name = "Route-External-Via-GWC"
+$rule1Name = "Route-External-Via-MailSecurity"
 
 if (-not $gwcConnector) {
-    Write-Warn "GWCコネクタがないためスキップ"
+    Write-Warn "MailSecurityコネクタがないためスキップ"
     $results += [PSCustomObject]@{
         RuleName = $rule1Name
         Status = "SKIP"
-        Reason = "GWCコネクタ未作成"
+        Reason = "MailSecurityコネクタ未作成"
     }
 }
 elseif ($existingRules | Where-Object { $_.Name -eq $rule1Name }) {
@@ -416,9 +416,9 @@ $summary = @"
 # 作成されるルール
 #-------------------------------------------------------------------------------
 
-1. Route-External-Via-GWC
+1. Route-External-Via-MailSecurity
    条件: 組織外宛のメール
-   動作: GuardianWall Cloud経由でルーティング
+   動作: 送信セキュリティサービス経由でルーティング
    目的: 添付ファイルのURL化
 
 2. Block-External-Forwarding
@@ -437,7 +437,7 @@ $summary = @"
 
 1. 作成されたルールの動作確認
    - テストメールを送信してMessage Traceで確認
-   - 外部宛がGWC経由になっているか
+   - 外部宛がMailSecurity経由になっているか
    - 転送がブロックされるか
 
 2. 内部DMZ SMTP側のループ防止設定

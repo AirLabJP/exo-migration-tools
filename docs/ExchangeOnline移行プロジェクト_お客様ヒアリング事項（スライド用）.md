@@ -26,7 +26,7 @@ tags:
 ### 本日の確認事項
 
 1. **移行対象データ** - ユーザー一覧、ドメイン選定
-2. **現行システム設定** - FireEye、GuardianWall、AWS DMZ SMTP
+2. **現行システム設定** - FireEye、現行GWサーバー、AWS DMZ SMTP
 3. **ID運用の現状** - 作成フロー、命名規則、ライフサイクル
 4. **技術的確認事項** - EWS利用、内部DMZ利用、共有アドレス
 5. **スケジュール・承認** - タイムライン、承認プロセス
@@ -73,7 +73,7 @@ user2@contoso.local,user2,user2@example.co.jp,,
 | システム | 確認内容 | 提供方法 |
 |---|---|---|
 | **FireEye** | 40ドメインの転送先設定（→AWS DMZ SMTP確認） | スクリーンショット or 設定エクスポート |
-| **GuardianWall** | 現行ルール・ポリシー（GWC移行用） | 設定エクスポート（可能なら） |
+| **現行GWサーバー** | 現行ルール・ポリシー（新サービス移行時の参考用） | 設定エクスポート（可能なら） |
 | **AWS DMZ SMTP** | transport設定（ドメインごとの転送先） | 設定ファイル or 確認方法 |
 | **Postfix（SMTPハブ）** | 内部ドメイン宛のルーティング設定 | 設定ファイル or 確認方法 |
 
@@ -190,7 +190,7 @@ user2@contoso.local,user2,user2@example.co.jp,,
 3. ✅ 上記ヒアリング事項への回答
 
 **任意（できるだけ早めに）**:
-- FireEye/GuardianWall設定情報の提供
+- FireEye/現行GWサーバー設定情報の提供
 - 現行システム設定ファイル（AWS DMZ SMTP、Postfix等）
 
 ---

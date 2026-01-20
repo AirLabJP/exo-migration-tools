@@ -71,7 +71,7 @@ $config = Get-Content -Path "config/production.yaml" -Raw | ConvertFrom-Yaml
 # 値を使用
 $tenantId = $config.microsoft365.tenant_id
 $targetDomains = $config.target_domains
-$gwcHost = $config.mail_security.guardianwall.smart_host
+$mailSecHost = $config.mail_security.smart_host  # 送信セキュリティサービス導入時
 ```
 
 ---

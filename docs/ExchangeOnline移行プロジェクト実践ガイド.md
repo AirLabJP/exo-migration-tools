@@ -24,7 +24,7 @@ Linux（Postfix/Courier IMAP）ベースのメールシステムからExchange O
 |---|---|
 | 1 | パイロット移行は1ドメインのみ |
 | 2 | FireEyeは継続利用（設定変更なし）、**MXも変更しない（DNS変更なし）**。AWS DMZ SMTPのtransport設定でパイロットドメインをEXOへ振り分け |
-| 3 | 添付ファイルURL化はGuardianWall Cloud で実現 |
+| 3 | 添付ファイルURL化は送信セキュリティサービスで実現（導入時） |
 | 4 | Active DirectoryとEntra ID Connectは構成済み |
 | 5 | EXOライセンスは調達済み |
 | 6 | 検証環境なし（本番テナントでテスト） |
@@ -71,7 +71,7 @@ Linux（Postfix/Courier IMAP）ベースのメールシステムからExchange O
 ### 設計方針
 
 - **変更箇所を最小限に**（FireEyeは変更なし）
-- **内部宛メールは外部向けセキュリティ経路（GWC/インターネット配送）に出さず、組織内配送として扱う**
+- **内部宛メールは外部向けセキュリティ経路（セキュリティサービス経由）に出さず、組織内配送として扱う**
 - **AWS DMZ SMTPのtransport設定で制御**
 
 ### 用語定義
@@ -92,7 +92,7 @@ Thunderbird（現行ユーザー）
 Postfix（SMTPハブ）
     │
     ▼
-GuardianWall（添付URL化）
+現行GWサーバー（添付URL化）
     │
     ▼
 AWS DMZ SMTP
@@ -111,7 +111,7 @@ Exchange Online
     │
     │ Outbound Connector #1
     ▼
-GuardianWall Cloud（添付URL化）
+送信セキュリティサービス（添付URL化・導入時）
     │
     ▼
 インターネット → 外部宛先
@@ -232,8 +232,8 @@ AWS DMZ SMTP
 
 | # | 起点 | 宛先 | 経路 |
 |---|---|---|---|
-| ① | Thunderbird | 外部 | Postfix → GW → AWS DMZ → インターネット |
-| ② | Outlook | 外部 | EXO → GWC → インターネット |
+| ① | Thunderbird | 外部 | Postfix → 現行GW → AWS DMZ → インターネット |
+| ② | Outlook | 外部 | EXO → セキュリティサービス → インターネット（導入時） |
 | ③ | Thunderbird | 未移行ユーザー | Postfix → Courier（現行通り） |
 | ④ | Thunderbird | 移行済みユーザー | Postfix → AWS DMZ → EXO |
 | ⑤ | Outlook | 移行済みユーザー | EXO内完結 |
@@ -260,16 +260,16 @@ AWS DMZ SMTP
 
 | # | 種類 | 名前 | 宛先 | 用途 |
 |---|---|---|---|---|
-| 1 | Outbound | To-GuardianWall-Cloud | GWC | 外部宛の添付URL化 |
+| 1 | Outbound | To-MailSecurity-Service | セキュリティサービス | 外部宛の添付URL化（導入時） |
 | 2 | Outbound | To-OnPrem-DMZ-Fallback | 内部DMZ SMTP | 未移行ユーザーへのフォールバック |
 | 3 | Inbound | From-AWS-DMZ-SMTP | AWS DMZ SMTPから | 内部からの受信許可 |
 
 ### Outbound #1: GuardianWall Cloud向け
 
 ```powershell
-New-OutboundConnector -Name "To-GuardianWall-Cloud" `
+New-OutboundConnector -Name "To-MailSecurity-Service" `
     -ConnectorType Partner `
-    -SmartHosts "gwc.example.com" `
+    -SmartHosts "mailsecurity.example.com" `
     -TlsSettings EncryptionOnly `  # ※値はテナント/モジュール仕様に合わせて調整
     -UseMXRecord $false `
     -RecipientDomains "*" `
@@ -283,10 +283,10 @@ New-OutboundConnector -Name "To-GuardianWall-Cloud" `
 `-IsTransportRuleScoped $true` の場合、**ルール側でコネクタを指定**する必要がある。
 
 ```powershell
-# 外部宛メールをGWCコネクタ経由で送信
-New-TransportRule -Name "Route External via GWC" `
+# 外部宛メールをセキュリティサービスコネクタ経由で送信
+New-TransportRule -Name "Route External via MailSecurity" `
     -SentToScope NotInOrganization `
-    -RouteMessageOutboundConnector "To-GuardianWall-Cloud" `
+    -RouteMessageOutboundConnector "To-MailSecurity-Service" `
     -Enabled $true
 ```
 
@@ -373,7 +373,7 @@ EXOで対象ドメインを **Internal Relay** として登録し、メールボ
 
 3. **Outbound Connectorのスコープ**
    - 移行対象ドメイン宛のみ発動するように設定
-   - 外部宛メールはGWCコネクタが処理
+   - 外部宛メールはセキュリティサービスコネクタが処理
 
 3. **内部DMZ SMTP側の設定**
    - EXOからの接続を許可（IPレンジ or 証明書認証）
@@ -554,7 +554,7 @@ New-TransportRule -Name "Mark Fallback Route" `
 | メーラー | Thunderbird | 移行後はOutlook希望 |
 | プロトコル | POP | サーバーにメール残らない |
 | メールボックス | Courier IMAP | 40ドメイン |
-| セキュリティ | FireEye + GuardianWall | 添付URL化あり |
+| セキュリティ | FireEye + 現行GWサーバー | 添付URL化あり |
 | AD mail属性 | ほぼ空 | 全投入が必要 |
 | ID作成 | 独自システム（自由度高） | 命名規則整理が必要 |
 | 1ユーザー複数アドレス | あり | 同一ドメイン/複数ドメイン両方 |
@@ -733,7 +733,7 @@ user1@contoso.local,user1,user1@example.co.jp,alias1@example.co.jp;alias2@exampl
 ```
 
 **準備タスク**:
-- [ ] GuardianWall Cloud契約・環境準備
+- [ ] 送信セキュリティサービス契約・環境準備
 - [ ] EXO Outbound Connector作成（GWC向け）
 - [ ] 現行GuardianWall設定のエクスポート・移行
 
@@ -1087,7 +1087,7 @@ user2@contoso.local,user2,user2@example.co.jp,,
 - [ ] 紛れメールボックスがゼロ
 - [ ] テストドメインでの全テスト完了
 - [ ] 本番ドメインでのEXO内テスト完了
-- [ ] GuardianWall Cloud設定完了
+- [ ] 送信セキュリティサービス設定完了（導入時）
 - [ ] SPF/DKIM/DMARC設定完了
 
 #### 6-2. DMZ SMTP分岐切替
@@ -1335,7 +1335,7 @@ NDR発生
 
 ### Phase 6完了チェック（SMTP切替）
 
-- [ ] GuardianWall Cloud設定完了
+- [ ] 送信セキュリティサービス設定完了（導入時）
 - [ ] SPF/DKIM/DMARC本番設定完了
 - [ ] DMZ SMTPに本番ドメイン向けルーティング追加
 - [ ] 外→本番ドメインテスト完了
