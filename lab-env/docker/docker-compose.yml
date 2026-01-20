@@ -1,156 +1,94 @@
 # Exchange Online移行 検証環境
-# 顧客環境（Postfix + Courier IMAP）を再現
-#
-# 構成:
-# - courier-imap: メールボックスサーバー（Courier IMAP）
-# - postfix-hub: 内部SMTPハブ（MUA送信受付）
-# - dmz-aws: 外部受口（FireEye後段を模擬）
-# - dmz-internal: EXOフォールバック用内部DMZ
-#
-# メールフロー:
-# [送信] Thunderbird → postfix-hub:587 → dmz-aws:25 → 外部
-#                                      → courier-imap:25 (内部宛)
-# [受信] 外部 → dmz-aws:25 → postfix-hub:25 → courier-imap:25
-#
-# [EXO移行後]
-# dmz-aws の transport を変更して移行済みドメインをEXOへルーティング
-# EXO Internal Relay → dmz-internal:25 → courier-imap:25 (未移行ユーザー宛)
+# Courier IMAP + Postfix構成（顧客環境再現）
 
 services:
-  # ========================================
-  # Courier IMAP（メールボックスサーバー）
-  # ========================================
+  # === Courier IMAP（メールボックスサーバー） ===
   courier-imap:
     build:
       context: ./courier-imap
       dockerfile: Dockerfile
-    container_name: exo-lab-courier-imap
+    container_name: lab-courier-imap
     hostname: courier-imap
     domainname: lab.local
     ports:
-      - "143:143"     # IMAP
-      - "993:993"     # IMAPS
+      - "143:143"    # IMAP
+      - "993:993"    # IMAPS
     volumes:
-      - courier-maildata:/var/mail/vhosts
+      - courier-mail:/var/mail/vhosts
       - courier-config:/etc/courier
       - ./courier-imap/scripts:/scripts:ro
     networks:
-      - exo-lab-network
+      - lab-network
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "nc", "-z", "localhost", "143"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
 
-  # ========================================
-  # Postfix Hub（内部SMTPハブ）
-  # ========================================
+  # === Postfix Hub（内部SMTPハブ） ===
   postfix-hub:
     build:
       context: ./postfix-hub
       dockerfile: Dockerfile
-    container_name: exo-lab-postfix-hub
+    container_name: lab-postfix-hub
     hostname: postfix-hub
     domainname: lab.local
     ports:
-      - "25:25"       # SMTP（内部から）
-      - "587:587"     # Submission（MUA用）
+      - "25:25"      # SMTP
+      - "587:587"    # Submission
     volumes:
-      - postfix-hub-queue:/var/spool/postfix
-      - postfix-hub-logs:/var/log
-    networks:
-      - exo-lab-network
+      - postfix-hub-spool:/var/spool/postfix
+      - ./postfix-hub/scripts:/scripts:ro
     depends_on:
       - courier-imap
+    networks:
+      - lab-network
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "nc", "-z", "localhost", "25"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
 
-  # ========================================
-  # DMZ AWS（外部受口）
-  # ========================================
+  # === DMZ AWS（外部受口・EXOルーティング変更対象） ===
   dmz-aws:
     build:
       context: ./dmz-postfix-aws
       dockerfile: Dockerfile
-    container_name: exo-lab-dmz-aws
+    container_name: lab-dmz-aws
     hostname: dmz-aws
     domainname: lab.local
     ports:
-      - "2525:25"     # SMTP（外部から、ポート変更）
+      - "2525:25"    # 外部SMTP（ホストポート変更）
     volumes:
-      - dmz-aws-queue:/var/spool/postfix
-      - dmz-aws-logs:/var/log
+      - dmz-aws-spool:/var/spool/postfix
       - ./dmz-postfix-aws/scripts:/scripts:ro
-    networks:
-      - exo-lab-network
+      - ./dmz-postfix-aws/transport.exo:/etc/postfix/transport.exo:ro
+      - ./dmz-postfix-aws/transport.bak:/etc/postfix/transport.bak:ro
     depends_on:
       - postfix-hub
+    networks:
+      - lab-network
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "nc", "-z", "localhost", "25"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
 
-  # ========================================
-  # DMZ Internal（EXOフォールバック用）
-  # ========================================
+  # === DMZ Internal（EXOフォールバック用） ===
   dmz-internal:
     build:
       context: ./dmz-postfix-internal
       dockerfile: Dockerfile
-    container_name: exo-lab-dmz-internal
+    container_name: lab-dmz-internal
     hostname: dmz-internal
     domainname: lab.local
     ports:
-      - "2526:25"     # SMTP（EXOから、ポート変更）
+      - "2526:25"    # 内部DMZ SMTP
     volumes:
-      - dmz-internal-queue:/var/spool/postfix
-      - dmz-internal-logs:/var/log
-    networks:
-      - exo-lab-network
+      - dmz-internal-spool:/var/spool/postfix
+      - ./dmz-postfix-internal/scripts:/scripts:ro
     depends_on:
       - courier-imap
+    networks:
+      - lab-network
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "nc", "-z", "localhost", "25"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
 
-# ========================================
-# ボリューム定義
-# ========================================
 volumes:
-  courier-maildata:
-    name: exo-lab-courier-maildata
+  courier-mail:
   courier-config:
-    name: exo-lab-courier-config
-  postfix-hub-queue:
-    name: exo-lab-postfix-hub-queue
-  postfix-hub-logs:
-    name: exo-lab-postfix-hub-logs
-  dmz-aws-queue:
-    name: exo-lab-dmz-aws-queue
-  dmz-aws-logs:
-    name: exo-lab-dmz-aws-logs
-  dmz-internal-queue:
-    name: exo-lab-dmz-internal-queue
-  dmz-internal-logs:
-    name: exo-lab-dmz-internal-logs
+  postfix-hub-spool:
+  dmz-aws-spool:
+  dmz-internal-spool:
 
-# ========================================
-# ネットワーク定義
-# ========================================
 networks:
-  exo-lab-network:
+  lab-network:
     name: exo-lab-network
     driver: bridge
-    ipam:
-      config:
-        - subnet: 172.28.0.0/16

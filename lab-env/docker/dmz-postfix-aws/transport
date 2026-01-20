@@ -1,30 +1,7 @@
-# DMZ AWS トランスポート設定
-# 【現行環境】全ての内部ドメインをpostfix-hub経由でCourier IMAPへ
-#
-# =====================================================================
-# EXO移行時の変更手順:
-# 1. このファイルをバックアップ: cp transport transport.bak
-# 2. 移行対象ドメインのルーティングをEXO向けに変更
-# 3. postmap /etc/postfix/transport && postfix reload
-#
-# 切り戻し手順:
-# 1. cp transport.bak transport
-# 2. postmap /etc/postfix/transport && postfix reload
-# =====================================================================
+# DMZ AWS transport設定（現行：EXO移行前）
+# 全ての内部ドメインをpostfix-hub経由でCourier IMAPへ
 
-# === 内部ドメイン（現行：postfix-hub経由） ===
 test.example.co.jp      smtp:[postfix-hub]:25
 example.co.jp           smtp:[postfix-hub]:25
 sub.example.co.jp       smtp:[postfix-hub]:25
 lab.local               smtp:[postfix-hub]:25
-
-# === EXO移行後の設定例（コメントアウト中） ===
-# 移行対象ドメインをEXOにルーティング
-# test.example.co.jp      smtp:[tenant.mail.protection.outlook.com]:25
-#
-# 未移行ドメインは既存のまま
-# example.co.jp           smtp:[postfix-hub]:25
-
-# === フォールバック ===
-# ワイルドカード（外部宛の場合）
-# *                       smtp:

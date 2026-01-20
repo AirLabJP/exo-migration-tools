@@ -1,18 +1,7 @@
 #!/bin/bash
 set -e
-
-echo "=== DMZ Internal Postfix Container Starting ==="
-
-# ディレクトリ作成
-mkdir -p /var/log/supervisor
-mkdir -p /var/spool/postfix
-
-# transportマップ更新
+echo "=== DMZ Internal Postfix Starting ==="
+mkdir -p /var/log/supervisor /var/spool/postfix
 postmap /etc/postfix/transport
-
-# Postfix設定チェック
-echo "Checking Postfix configuration..."
 postfix check || true
-
-echo "=== Starting supervisord ==="
 exec /usr/bin/supervisord -c /etc/supervisor/conf.d/supervisord.conf
