@@ -1,130 +1,146 @@
 # Exchange Online移行 検証環境
-# 顧客環境を再現: Courier IMAP + Postfix構成
+# 顧客環境（Postfix + Courier IMAP）を再現
 #
 # 構成:
 # - courier-imap: メールボックスサーバー（Courier IMAP）
-# - postfix-hub: 内部SMTPハブ（MUAからの送信受付）
-# - dmz-aws: AWS DMZ SMTP（外部受口、EXO移行時のルーティング変更対象）
-# - dmz-internal: 内部DMZ SMTP（EXOフォールバック用）
+# - postfix-hub: 内部SMTPハブ（MUA送信受付）
+# - dmz-aws: 外部受口（FireEye後段を模擬）
+# - dmz-internal: EXOフォールバック用内部DMZ
 #
-# 使用方法:
-#   docker-compose up -d
-#   docker-compose logs -f
-#   docker-compose down
+# メールフロー:
+# [送信] Thunderbird → postfix-hub:587 → dmz-aws:25 → 外部
+#                                      → courier-imap:25 (内部宛)
+# [受信] 外部 → dmz-aws:25 → postfix-hub:25 → courier-imap:25
+#
+# [EXO移行後]
+# dmz-aws の transport を変更して移行済みドメインをEXOへルーティング
+# EXO Internal Relay → dmz-internal:25 → courier-imap:25 (未移行ユーザー宛)
 
 services:
   # ========================================
   # Courier IMAP（メールボックスサーバー）
-  # 顧客環境のCourier IMAPを再現
   # ========================================
   courier-imap:
     build:
       context: ./courier-imap
       dockerfile: Dockerfile
-    container_name: courier-imap
+    container_name: exo-lab-courier-imap
     hostname: courier-imap
     domainname: lab.local
     ports:
       - "143:143"     # IMAP
       - "993:993"     # IMAPS
     volumes:
-      - courier-mail:/var/mail/vhosts
-      - courier-userdb:/etc/courier
-      - courier-logs:/var/log
+      - courier-maildata:/var/mail/vhosts
+      - courier-config:/etc/courier
+      - ./courier-imap/scripts:/scripts:ro
     networks:
       - exo-lab-network
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "143"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
   # ========================================
   # Postfix Hub（内部SMTPハブ）
-  # MUAからの送信を受け付け、適切な宛先にルーティング
   # ========================================
   postfix-hub:
     build:
       context: ./postfix-hub
       dockerfile: Dockerfile
-    container_name: postfix-hub
+    container_name: exo-lab-postfix-hub
     hostname: postfix-hub
     domainname: lab.local
     ports:
-      - "25:25"       # SMTP
-      - "587:587"     # Submission
+      - "25:25"       # SMTP（内部から）
+      - "587:587"     # Submission（MUA用）
     volumes:
-      - postfix-hub-spool:/var/spool/postfix
+      - postfix-hub-queue:/var/spool/postfix
       - postfix-hub-logs:/var/log
     networks:
       - exo-lab-network
     depends_on:
       - courier-imap
-      - dmz-aws
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "25"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
   # ========================================
-  # DMZ AWS SMTP（外部受口）
-  # 外部からのメール受信、EXO移行時のルーティング変更対象
+  # DMZ AWS（外部受口）
   # ========================================
   dmz-aws:
     build:
       context: ./dmz-postfix-aws
       dockerfile: Dockerfile
-    container_name: dmz-aws
+    container_name: exo-lab-dmz-aws
     hostname: dmz-aws
     domainname: lab.local
     ports:
-      - "2525:25"     # 外部SMTP受付（ホスト側はポート変更）
+      - "2525:25"     # SMTP（外部から、ポート変更）
     volumes:
-      - dmz-aws-spool:/var/spool/postfix
+      - dmz-aws-queue:/var/spool/postfix
       - dmz-aws-logs:/var/log
-      # transportファイルをホストから編集可能に
-      - ./dmz-postfix-aws/transport:/etc/postfix/transport:rw
+      - ./dmz-postfix-aws/scripts:/scripts:ro
     networks:
       - exo-lab-network
     depends_on:
       - postfix-hub
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "25"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
   # ========================================
-  # DMZ Internal SMTP（EXOフォールバック用）
-  # EXOから未移行ユーザー宛のメールを受け取りCourier IMAPへ中継
+  # DMZ Internal（EXOフォールバック用）
   # ========================================
   dmz-internal:
     build:
       context: ./dmz-postfix-internal
       dockerfile: Dockerfile
-    container_name: dmz-internal
+    container_name: exo-lab-dmz-internal
     hostname: dmz-internal
     domainname: lab.local
     ports:
-      - "2526:25"     # EXOからの接続用（ホスト側はポート変更）
+      - "2526:25"     # SMTP（EXOから、ポート変更）
     volumes:
-      - dmz-internal-spool:/var/spool/postfix
+      - dmz-internal-queue:/var/spool/postfix
       - dmz-internal-logs:/var/log
     networks:
       - exo-lab-network
     depends_on:
       - courier-imap
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "25"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
 # ========================================
 # ボリューム定義
 # ========================================
 volumes:
-  courier-mail:
-    name: exo-lab-courier-mail
-  courier-userdb:
-    name: exo-lab-courier-userdb
-  courier-logs:
-    name: exo-lab-courier-logs
-  postfix-hub-spool:
-    name: exo-lab-postfix-hub-spool
+  courier-maildata:
+    name: exo-lab-courier-maildata
+  courier-config:
+    name: exo-lab-courier-config
+  postfix-hub-queue:
+    name: exo-lab-postfix-hub-queue
   postfix-hub-logs:
     name: exo-lab-postfix-hub-logs
-  dmz-aws-spool:
-    name: exo-lab-dmz-aws-spool
+  dmz-aws-queue:
+    name: exo-lab-dmz-aws-queue
   dmz-aws-logs:
     name: exo-lab-dmz-aws-logs
-  dmz-internal-spool:
-    name: exo-lab-dmz-internal-spool
+  dmz-internal-queue:
+    name: exo-lab-dmz-internal-queue
   dmz-internal-logs:
     name: exo-lab-dmz-internal-logs
 

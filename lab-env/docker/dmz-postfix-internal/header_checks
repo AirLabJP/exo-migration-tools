@@ -1,10 +1,14 @@
-# ヘッダチェック設定（ループ防止）
-# EXOのTransport Ruleで付与されるX-EXO-Loop-Markerヘッダを検出
-# このヘッダが存在する場合は、既にEXO経由で配送されたメールであり、
-# 再度EXOに戻すとループするため拒否する
+# ヘッダーチェック（ループ防止）
+# EXOが付与するX-EXO-Loop-Markerヘッダを検出してループを防止
+#
+# EXOのTransport Ruleで以下のヘッダを付与:
+#   X-EXO-Loop-Marker: true
+#
+# このヘッダが存在するメールを再度受信した場合はループと判断して拒否
 
-# ループ防止マーカー検出
-/^X-EXO-Loop-Marker:/i    REJECT Mail loop detected: X-EXO-Loop-Marker header present
+# ループマーカー検出
+/^X-EXO-Loop-Marker:\s*true/i    REJECT Mail loop detected: message already processed by EXO
 
-# 検証用：ループマーカーの存在をログ出力（拒否しない場合はこちらを使用）
-# /^X-EXO-Loop-Marker:/i    WARN Mail from EXO detected
+# 過剰なReceivedヘッダ検出（バックアップ）
+# 10個以上のReceivedヘッダがある場合は警告
+# /^Received:/    WARN Multiple hops detected
