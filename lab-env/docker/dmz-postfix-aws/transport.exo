@@ -1,0 +1,11 @@
+# DMZ AWS transport設定（EXO移行後）
+# パイロットドメインをEXOへルーティング
+# ※EXOエンドポイントは実際の値に置き換え
+
+# === EXO移行済みドメイン ===
+test.example.co.jp      smtp:[lab-tenant.mail.protection.outlook.com]:25
+
+# === 未移行ドメイン（既存経路維持） ===
+example.co.jp           smtp:[postfix-hub]:25
+sub.example.co.jp       smtp:[postfix-hub]:25
+lab.local               smtp:[postfix-hub]:25

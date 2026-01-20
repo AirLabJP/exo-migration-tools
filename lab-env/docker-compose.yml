@@ -1,113 +1,99 @@
-# Exchange Online移行 検証環境（メールサーバー構成）
-# Windows Server上のDockerで動作
+# Exchange Online移行 検証環境（Courier IMAP + Postfix構成）
+# Windows Server上のDocker Desktopで動作
+# ※顧客環境のCourier IMAPを正確に再現
 
 services:
-  # SMTPハブ（Postfix） - 顧客の内部SMTPハブを模擬
-  postfix:
-    image: catatnight/postfix:latest
-    container_name: lab-postfix
-    hostname: postfix
-    domainname: lab.local
-    ports:
-      - "25:25"      # SMTP
-      - "587:587"    # Submission
-    volumes:
-      - ./postfix/main.cf:/etc/postfix/main.cf:ro
-      - ./postfix/transport:/etc/postfix/transport:ro
-      - ./postfix/virtual:/etc/postfix/virtual:ro
-      - ./logs/postfix:/var/log
-    environment:
-      - maildomain=lab.local
-      - smtp_server=mailbox
-      - smtp_user=root
-      - smtp_password=
-      - RELAY_NETWORKS=172.16.0.0/12 192.168.0.0/16 10.0.0.0/8
-    networks:
-      - lab-network
-    depends_on:
-      - mailbox
-    restart: unless-stopped
-
-  # メールボックスサーバー（Dovecot） - Courier IMAPを模擬
-  mailbox:
-    image: mailserver/docker-mailserver:latest
-    container_name: lab-mailbox
-    hostname: mailbox
+  # === Courier IMAP（メールボックスサーバー） ===
+  # 顧客環境のCourier IMAPを再現（Dovecotではない）
+  courier-imap:
+    build:
+      context: ./docker/courier-imap
+      dockerfile: Dockerfile
+    container_name: lab-courier-imap
+    hostname: courier-imap
     domainname: lab.local
     ports:
       - "143:143"    # IMAP
       - "993:993"    # IMAPS
     volumes:
-      - ./maildata:/var/mail
-      - ./mailstate:/var/mail-state
-      - ./maillogs:/var/log/mail
-      - ./config/dovecot-quotas.cf:/etc/dovecot-quotas.cf:ro
-    environment:
-      - ENABLE_SPAMASSASSIN=0
-      - ENABLE_CLAMAV=0
-      - ENABLE_FAIL2BAN=0
-      - ENABLE_POSTGREY=0
-      - ENABLE_SASLAUTHD=0
-      - ONE_DIR=1
-      - DMS_DEBUG=0
-      - PERMIT_DOCKER=network
-      - POSTFIX_MESSAGE_SIZE_LIMIT=10485760  # 10MB
-    cap_add:
-      - NET_ADMIN
+      - courier-mail:/var/mail/vhosts
+      - courier-config:/etc/courier
+      - ./docker/courier-imap/scripts:/scripts:ro
     networks:
       - lab-network
     restart: unless-stopped
 
-  # DMZ SMTP（AWS側） - 外部SMTP中継を模擬
+  # === Postfix Hub（内部SMTPハブ） ===
+  # Thunderbird等からの送信受付、内部配送
+  postfix-hub:
+    build:
+      context: ./docker/postfix-hub
+      dockerfile: Dockerfile
+    container_name: lab-postfix-hub
+    hostname: postfix-hub
+    domainname: lab.local
+    ports:
+      - "25:25"      # SMTP
+      - "587:587"    # Submission
+    volumes:
+      - postfix-hub-spool:/var/spool/postfix
+      - ./docker/postfix-hub/scripts:/scripts:ro
+    depends_on:
+      - courier-imap
+    networks:
+      - lab-network
+    restart: unless-stopped
+
+  # === DMZ AWS（外部受口・EXOルーティング変更対象） ===
+  # FireEyeからのメール受信、EXO移行後のルーティング変更対象
   dmz-aws:
     build:
-      context: ./dmz-postfix-aws
+      context: ./docker/dmz-postfix-aws
       dockerfile: Dockerfile
     container_name: lab-dmz-aws
-    hostname: dmz-aws-smtp
+    hostname: dmz-aws
     domainname: lab.local
     ports:
-      - "2525:25"    # 外部からのSMTP受付
+      - "2525:25"    # 外部SMTP（ホストポート変更）
     volumes:
-      - ./dmz-postfix-aws/main.cf:/etc/postfix/main.cf:ro
-      - ./dmz-postfix-aws/transport:/etc/postfix/transport:ro
-      - ./logs/dmz-aws:/var/log
-    environment:
-      - RELAY_HOST=mailbox
+      - dmz-aws-spool:/var/spool/postfix
+      - ./docker/dmz-postfix-aws/scripts:/scripts:ro
+      - ./docker/dmz-postfix-aws/transport.exo:/etc/postfix/transport.exo:ro
+      - ./docker/dmz-postfix-aws/transport.bak:/etc/postfix/transport.bak:ro
+    depends_on:
+      - postfix-hub
     networks:
       - lab-network
-    depends_on:
-      - mailbox
     restart: unless-stopped
 
-  # DMZ SMTP（オンプレ側） - 内部DMZ SMTP中継を模擬
-  dmz-onprem:
+  # === DMZ Internal（EXOフォールバック用） ===
+  # EXOからInternal Relay経由で未移行ユーザーへ配送
+  dmz-internal:
     build:
-      context: ./dmz-postfix-onprem
+      context: ./docker/dmz-postfix-internal
       dockerfile: Dockerfile
-    container_name: lab-dmz-onprem
-    hostname: dmz-onprem-smtp
+    container_name: lab-dmz-internal
+    hostname: dmz-internal
     domainname: lab.local
     ports:
-      - "2526:25"    # フォールバック経路用
+      - "2526:25"    # 内部DMZ SMTP
     volumes:
-      - ./dmz-postfix-onprem/main.cf:/etc/postfix/main.cf:ro
-      - ./dmz-postfix-onprem/transport:/etc/postfix/transport:ro
-      - ./logs/dmz-onprem:/var/log
-    environment:
-      - RELAY_HOST=mailbox
+      - dmz-internal-spool:/var/spool/postfix
+      - ./docker/dmz-postfix-internal/scripts:/scripts:ro
+    depends_on:
+      - courier-imap
     networks:
       - lab-network
-    depends_on:
-      - mailbox
     restart: unless-stopped
+
+volumes:
+  courier-mail:
+  courier-config:
+  postfix-hub-spool:
+  dmz-aws-spool:
+  dmz-internal-spool:
 
 networks:
   lab-network:
-    name: lab-network
+    name: exo-lab-network
     driver: bridge
-
-volumes:
-  maildata:
-  mailstate:
-  maillogs:
