@@ -1,5 +1,5 @@
-# DMZ Internal Postfix master.cf
-# サービス定義
+# Postfix master.cf
+# DMZ Internal SMTP サービス定義
 
 # ==========================================================================
 # service type  private unpriv  chroot  wakeup  maxproc command + args

@@ -1,11 +1,11 @@
-# DMZ Postfix Internal（内部DMZ SMTP）
-# EXOからのフォールバック経路用
-# 移行期間中、EXOから未移行ユーザー宛のメールを受け取り、Courier IMAPへ中継
+# DMZ Postfix Internal（内部DMZ）
+# EXOからのフォールバック用
+# Internal Relay時に未移行ユーザー宛をCourier IMAPへ転送
 
 FROM debian:bookworm-slim
 
 LABEL maintainer="EXO Migration Lab"
-LABEL description="Internal DMZ SMTP for EXO fallback relay"
+LABEL description="Internal DMZ SMTP for EXO fallback routing"
 
 # 必要なパッケージをインストール
 RUN apt-get update && apt-get install -y --no-install-recommends \

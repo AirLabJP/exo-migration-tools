@@ -1,74 +1,84 @@
 # EXO移行検証環境 Docker構成
 
-顧客環境（Courier IMAP + Postfix）を再現したDocker環境。
+## 概要
 
-## 構成図
+顧客環境（Postfix + Courier IMAP）を Docker で再現した検証環境です。
+Dovecot ではなく **Courier IMAP** を使用して、顧客環境との互換性を確保しています。
+
+## コンテナ構成
+
+| コンテナ | ホスト名 | ポート | 役割 |
+|---|---|---|---|
+| courier-imap | courier-imap.lab.local | 143, 993 | メールボックスサーバー（Courier IMAP） |
+| postfix-hub | postfix-hub.lab.local | 25, 587 | 内部SMTPハブ（MUA送信受付） |
+| dmz-aws | dmz-aws.lab.local | 2525 | AWS DMZ SMTP（外部受口） |
+| dmz-internal | dmz-internal.lab.local | 2526 | 内部DMZ SMTP（EXOフォールバック用） |
+
+## メールフロー
+
+### 現行環境（EXO移行前）
 
 ```
-                                    【検証環境】
-                                         │
-    ┌────────────────────────────────────┼────────────────────────────────────┐
-    │                                    │                                    │
-    │  ┌─────────────────────────────────┴─────────────────────────────────┐ │
-    │  │                    Docker Network (exo-lab-network)               │ │
-    │  │                                                                    │ │
-    │  │  ┌─────────────┐    ┌─────────────┐    ┌─────────────┐           │ │
-    │  │  │ postfix-hub │───▶│ courier-imap│◀───│ dmz-internal│           │ │
-    │  │  │ (内部SMTP)  │    │ (IMAP)      │    │ (EXO fallback)│          │ │
-    │  │  │ :25,:587    │    │ :143,:993   │    │ :2526       │           │ │
-    │  │  └──────┬──────┘    └─────────────┘    └─────────────┘           │ │
-    │  │         │                                                         │ │
-    │  │         │ 外部送信                                                 │ │
-    │  │         ▼                                                         │ │
-    │  │  ┌─────────────┐                                                  │ │
-    │  │  │ dmz-aws     │ ◀── 外部受信（FireEye経由を模擬）               │ │
-    │  │  │ (外部受口)  │                                                  │ │
-    │  │  │ :2525       │                                                  │ │
-    │  │  └─────────────┘                                                  │ │
-    │  │                                                                    │ │
-    │  └────────────────────────────────────────────────────────────────────┘ │
-    │                                                                         │
-    └─────────────────────────────────────────────────────────────────────────┘
+【内部送信】
+Thunderbird → postfix-hub:587 → courier-imap（Maildir配送）
+
+【外部送信】
+Thunderbird → postfix-hub:587 → dmz-aws:25 → インターネット
+
+【外部受信】
+インターネット → dmz-aws:2525 → postfix-hub:25 → courier-imap
+```
+
+### EXO移行後
+
+```
+【EXOからの配送（移行済みユーザー）】
+Outlook → Exchange Online → 外部/内部
+
+【EXOからの配送（未移行ユーザー宛 = Internal Relay）】
+Exchange Online → dmz-internal:2526 → courier-imap
+
+【外部からの配送（移行済みドメイン宛）】
+インターネット → dmz-aws:2525 → Exchange Online
+
+【外部からの配送（未移行ドメイン宛）】
+インターネット → dmz-aws:2525 → postfix-hub:25 → courier-imap
 ```
 
 ## クイックスタート
 
+### 起動
+
 ```bash
 cd lab-env/docker
-
-# ビルド＆起動
 docker-compose up -d --build
-
-# 状態確認
-docker-compose ps
-
-# ログ確認
-docker-compose logs -f
-
-# 個別コンテナのログ
-docker-compose logs -f courier-imap
-
-# 停止
-docker-compose down
-
-# 完全削除（ボリューム含む）
-docker-compose down -v
 ```
 
-## コンテナ一覧
+### 状態確認
 
-| コンテナ | ポート | 役割 |
-|---|---|---|
-| courier-imap | 143, 993 | メールボックス（Courier IMAP） |
-| postfix-hub | 25, 587 | 内部SMTPハブ（MUA送信受付） |
-| dmz-aws | 2525 | AWS DMZ SMTP（外部受口） |
-| dmz-internal | 2526 | 内部DMZ SMTP（EXOフォールバック） |
+```bash
+docker-compose ps
+docker-compose logs -f
+```
+
+### 停止
+
+```bash
+docker-compose down
+```
+
+### 完全クリーンアップ
+
+```bash
+docker-compose down -v
+docker volume prune -f
+```
 
 ## テストユーザー
 
-起動時に以下のユーザーが自動作成されます:
+起動時に自動作成されるユーザー:
 
-| ユーザー | パスワード | 用途 |
+| メールアドレス | パスワード | 用途 |
 |---|---|---|
 | user1@test.example.co.jp | password123 | 一般ユーザー |
 | user2@test.example.co.jp | password123 | 一般ユーザー |
@@ -79,121 +89,208 @@ docker-compose down -v
 | pilot03@test.example.co.jp | pilot123 | パイロットユーザー |
 | pilot04@test.example.co.jp | pilot123 | パイロットユーザー |
 | pilot05@test.example.co.jp | pilot123 | パイロットユーザー |
+| test-ml@test.example.co.jp | mlpass123 | メーリングリスト用 |
 
-同じユーザーが以下のドメインでも利用可能:
-- example.co.jp
-- sub.example.co.jp
+**注**: 同じユーザーが example.co.jp、sub.example.co.jp でも利用可能
 
-## メールクライアント設定
+### ユーザー追加
 
-### Thunderbird
+```bash
+# 個別ユーザー追加
+docker exec -it exo-lab-courier-imap /scripts/add_user.sh newuser@test.example.co.jp newpassword
+```
+
+## クライアント接続設定
+
+### Thunderbird（IMAP + SMTP）
 
 | 項目 | 設定値 |
 |---|---|
-| 受信サーバー（IMAP） | localhost:143 |
-| 送信サーバー（SMTP） | localhost:25 または localhost:587 |
-| 接続の保護 | なし |
+| メールアドレス | user1@test.example.co.jp |
+| 受信サーバー（IMAP） | localhost |
+| 受信ポート | 143 |
+| 送信サーバー（SMTP） | localhost |
+| 送信ポート | 25 または 587 |
+| 接続の保護 | なし（検証環境） |
 | 認証方式 | 通常のパスワード |
-
-### テストメール送信
-
-```bash
-# コンテナ内から送信
-docker exec -it postfix-hub bash -c 'echo "Test message" | mail -s "Test" user1@test.example.co.jp'
-
-# telnetで直接送信
-telnet localhost 25
-HELO test
-MAIL FROM:<test@example.com>
-RCPT TO:<user1@test.example.co.jp>
-DATA
-Subject: Test
-Test message
-.
-QUIT
-```
+| ユーザー名 | user1@test.example.co.jp |
+| パスワード | password123 |
 
 ## EXO移行シミュレーション
 
-### 1. 現行環境確認
+### Step 1: 現行環境でのメール送受信確認
 
 ```bash
-# 内部メール送受信
-docker exec -it postfix-hub bash -c 'echo "Internal test" | mail -s "Internal" user1@test.example.co.jp'
+# コンテナ内からテストメール送信
+docker exec -it exo-lab-postfix-hub bash -c 'echo "Test from postfix-hub" | mail -s "Test Mail" user1@test.example.co.jp'
 
 # ログ確認
-docker-compose logs postfix-hub | tail -20
-docker-compose logs courier-imap | tail -20
+docker exec -it exo-lab-courier-imap tail -20 /var/log/supervisor/courier-imap.log
 ```
 
-### 2. EXO移行（transport変更）
+### Step 2: dmz-aws の transport 変更（EXO移行）
 
 ```bash
-# dmz-awsのtransportファイルを編集
-# 移行対象ドメインをEXOにルーティング
-# （本番ではtenant.mail.protection.outlook.comを指定）
+# dmz-awsコンテナに入る
+docker exec -it exo-lab-dmz-aws bash
 
-# transportファイル更新後
-docker exec -it dmz-aws postmap /etc/postfix/transport
-docker exec -it dmz-aws postfix reload
+# transportファイルを編集
+vi /etc/postfix/transport
+
+# 移行済みドメインをEXOへルーティング変更:
+# test.example.co.jp      smtp:[postfix-hub]:25
+# ↓
+# test.example.co.jp      smtp:[tenant.mail.protection.outlook.com]:25
+
+# 設定反映
+postmap /etc/postfix/transport
+postfix reload
 ```
 
-### 3. 切り戻し
+または、切替スクリプトを使用:
 
 ```bash
-# バックアップから復元
-docker exec -it dmz-aws bash -c "cp /etc/postfix/transport.bak /etc/postfix/transport && postmap /etc/postfix/transport && postfix reload"
+docker exec -it exo-lab-dmz-aws /scripts/switch_to_exo.sh test.example.co.jp tenant.mail.protection.outlook.com
 ```
 
-## ユーザー追加
+### Step 3: 切り戻し
 
 ```bash
-# Courier IMAPにユーザー追加
-docker exec -it courier-imap /scripts/add_user.sh newuser@test.example.co.jp password123
+docker exec -it exo-lab-dmz-aws /scripts/rollback.sh
 ```
+
+## ログ確認
+
+### 各コンテナのメールログ
+
+```bash
+# Courier IMAP
+docker exec -it exo-lab-courier-imap tail -f /var/log/supervisor/courier-imap.log
+
+# Postfix Hub
+docker exec -it exo-lab-postfix-hub tail -f /var/log/mail.log
+
+# DMZ AWS
+docker exec -it exo-lab-dmz-aws tail -f /var/log/mail.log
+
+# DMZ Internal
+docker exec -it exo-lab-dmz-internal tail -f /var/log/mail.log
+```
+
+### メールキュー確認
+
+```bash
+docker exec -it exo-lab-postfix-hub mailq
+docker exec -it exo-lab-dmz-aws mailq
+```
+
+## 設定ファイル
+
+### postfix-hub
+
+| ファイル | 内容 |
+|---|---|
+| main.cf | メイン設定（relayhost、transport_maps等） |
+| master.cf | サービス定義（smtp、submission） |
+| transport | 宛先別ルーティング（内部→courier-imap） |
+| virtual | バーチャルエイリアス、メーリングリスト |
+
+### dmz-aws
+
+| ファイル | 内容 |
+|---|---|
+| main.cf | メイン設定（relay_domains等） |
+| transport | **EXO移行時に変更** |
+| transport.bak | 切り戻し用バックアップ |
+
+### dmz-internal
+
+| ファイル | 内容 |
+|---|---|
+| main.cf | メイン設定（EXO用設定） |
+| transport | Courier IMAP へのルーティング |
+| header_checks | ループ防止（X-EXO-Loop-Marker検出） |
+
+### courier-imap
+
+| ファイル | 内容 |
+|---|---|
+| imapd | IMAP デーモン設定 |
+| imapd-ssl | IMAPS 設定 |
+| authdaemonrc | 認証デーモン設定（userdb使用） |
+| /etc/courier/userdb | ユーザーデータベース |
 
 ## トラブルシューティング
 
-### ポートが使用中
+### コンテナが起動しない
 
 ```bash
-# 使用中のポートを確認
-netstat -an | findstr :25
-netstat -an | findstr :143
+# ログ確認
+docker-compose logs courier-imap
+docker-compose logs postfix-hub
 
-# docker-compose.ymlのポートマッピングを変更
+# 再ビルド
+docker-compose down -v
+docker-compose up -d --build
 ```
 
-### 認証失敗
+### IMAP認証失敗
 
 ```bash
 # userdb確認
-docker exec -it courier-imap cat /etc/courier/userdb
+docker exec -it exo-lab-courier-imap cat /etc/courier/userdb
 
-# userdb再構築
-docker exec -it courier-imap makeuserdb
+# userdb再生成
+docker exec -it exo-lab-courier-imap /scripts/create_users.sh
+docker exec -it exo-lab-courier-imap makeuserdb
 ```
 
-### メールが届かない
+### メールが配送されない
 
 ```bash
-# Postfixキュー確認
-docker exec -it postfix-hub mailq
-docker exec -it dmz-aws mailq
+# キュー確認
+docker exec -it exo-lab-postfix-hub mailq
 
 # ログ確認
-docker exec -it postfix-hub tail -50 /var/log/mail.log
+docker exec -it exo-lab-postfix-hub tail -50 /var/log/mail.log
+
+# 設定確認
+docker exec -it exo-lab-postfix-hub postconf -n
 ```
 
-## クリーンアップ
+### ポート競合
 
 ```bash
-# コンテナ停止・削除
-docker-compose down
+# 使用中のポート確認
+netstat -an | findstr :143
+netstat -an | findstr :25
 
-# ボリュームも削除
-docker-compose down -v
-
-# イメージも削除
-docker-compose down --rmi all -v
+# docker-compose.yml のポートを変更
 ```
+
+## ネットワーク構成
+
+```
+Docker Network: exo-lab-network (172.28.0.0/16)
+
+┌─────────────────┐     ┌─────────────────┐
+│ courier-imap    │     │ dmz-internal    │
+│ (IMAP:143,993)  │◀────│ (SMTP:25)       │
+└────────▲────────┘     └─────────────────┘
+         │                      ▲
+         │                      │ EXOフォールバック
+┌────────┴────────┐             │
+│ postfix-hub     │     ┌───────┴─────────┐
+│ (SMTP:25,587)   │     │ Exchange Online │
+└────────▲────────┘     │ (クラウド)      │
+         │              └─────────────────┘
+┌────────┴────────┐
+│ dmz-aws         │◀──── 外部受信
+│ (SMTP:25)       │
+└─────────────────┘
+```
+
+## 関連ドキュメント
+
+- [検証環境構築手順書](../検証環境構築手順書.md)
+- [lab-env README](../README.md)

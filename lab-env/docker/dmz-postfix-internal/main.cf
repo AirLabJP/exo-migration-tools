@@ -1,10 +1,10 @@
-# DMZ Postfix Internal（内部DMZ SMTP）設定
-# EXOからのフォールバック経路用
+# DMZ Postfix Internal（内部DMZ）設定
+# EXOからのフォールバック用
 #
 # 役割:
-# - EXO Outbound Connector（To-OnPrem-DMZ-Fallback）からの接続を受け付け
-# - 未移行ユーザー宛のメールをCourier IMAPへ中継
-# - ループ防止のためのヘッダチェック
+# - EXO Outbound Connector (To-OnPrem-DMZ-Fallback) からの受信
+# - 未移行ユーザー宛をCourier IMAPへ転送
+# - ループ防止（X-EXO-Loop-Marker ヘッダチェック）
 
 # 基本設定
 smtpd_banner = $myhostname ESMTP DMZ-Internal
@@ -26,39 +26,38 @@ inet_protocols = ipv4
 # リレー許可ドメイン
 relay_domains = test.example.co.jp, example.co.jp, sub.example.co.jp, lab.local
 
-# トランスポートマップ（Courier IMAPへ配送）
+# トランスポートマップ（Courier IMAPへ転送）
 transport_maps = hash:/etc/postfix/transport
 
-# EXOからの接続許可
-# 本番では Microsoft 365 送信IPレンジを設定
-# 検証環境ではDockerネットワーク全体を許可
-mynetworks = 127.0.0.0/8 172.16.0.0/12 192.168.0.0/16 10.0.0.0/8
+# ヘッダーチェック（ループ防止）
+header_checks = pcre:/etc/postfix/header_checks
 
 # セキュリティ設定
+# EXOからの接続を許可（Microsoft 365送信IPレンジ）
+# 検証環境ではDockerネットワーク全体を許可
 smtpd_recipient_restrictions = 
     permit_mynetworks,
     reject_unauth_destination
 
-# ヘッダチェック（ループ防止）
-# X-EXO-Loop-Marker ヘッダが存在する場合は拒否
-header_checks = pcre:/etc/postfix/header_checks
+mynetworks = 127.0.0.0/8 172.16.0.0/12 192.168.0.0/16 10.0.0.0/8
 
 # メッセージサイズ制限
-message_size_limit = 36700160  # EXOの受信制限と同じ約35MB
+message_size_limit = 36700160
 
-# TLS設定（EXOからの接続はTLS必須にすべきだが、検証環境では無効化）
+# TLS設定（EXOからはTLS必須の可能性あり、検証環境では無効化）
 smtpd_tls_security_level = none
 smtp_tls_security_level = none
 
 # キュー設定
 maximal_queue_lifetime = 1d
 bounce_queue_lifetime = 1d
+queue_run_delay = 300s
 
 # ログ設定
 maillog_file = /var/log/mail.log
 
 # ホップ制限（ループ防止）
-hopcount_limit = 25
+hopcount_limit = 15
 
 # デバッグ（検証環境用）
 debug_peer_level = 2
