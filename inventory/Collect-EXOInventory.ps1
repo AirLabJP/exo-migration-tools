@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-  Exchange Online 棚卸しスクリプト
+  Exchange Online 棚卸しスクリプト（強化版）
 
 .DESCRIPTION
   Exchange Onlineの受信者・コネクタ・ドメイン・セキュリティポリシー・権限情報を収集し、
@@ -10,31 +10,53 @@
   - Accepted Domains（承認済みドメイン）
   - Inbound/Outbound Connectors
   - 受信者一覧（Mailbox/MailUser/Contact/Group）
-  - Transport Rules（メールフロールール）
+  - 配布グループ・M365グループ（SendOnBehalf含む）
+  - Transport Rules（メールフロールール）+ ルーティング/ヘッダ操作ルール検出
+  - Transport Rule XML バックアップ
   - Remote Domains
-  - EOP/Defender セキュリティポリシー（AntiPhish/Malware/Spam/SafeLinks/SafeAttachments）
+  - EOP/Defender セキュリティポリシー + Rule（AntiPhish/Malware/Spam/SafeLinks/SafeAttachments）
+  - HostedOutboundSpamFilterPolicy（AutoForwardingMode）
   - CASMailbox（POP/IMAP/MAPI/ActiveSync設定）
-  - Mailbox権限・SendAs権限
+  - Get-PopSettings/Get-ImapSettings（サーバー側設定）
+  - Mailbox権限・SendAs権限・SendOnBehalf
   - 転送設定・保持ポリシー
   - Transport設定（サイズ制限/TLS設定）
+  - Mailbox個別サイズ制限
+  - InboxRule外部転送サンプル
 
   【出力ファイルと確認ポイント】
-  accepted_domains.csv        ← ★重要: ドメイン一覧とタイプ（Authoritative/InternalRelay）
-  inbound_connectors.csv      ← ★重要: 外部からの受信コネクタ
-  outbound_connectors.csv     ← ★重要: 外部への送信コネクタ
-  recipients.csv              ← ★重要: 全受信者一覧（紛れ検出用）
-  mailboxes.csv               ← メールボックス詳細（IsDirSynced含む）
-  cas_mailbox_protocols.csv   ← ★重要: POP/IMAP/MAPI/ActiveSync有効状態
-  mailbox_permissions.csv     ← メールボックス権限
-  sendas_permissions.csv      ← SendAs権限
-  mailbox_forwarding.csv      ← ★重要: 転送設定（外部転送検出）
-  transport_config.json       ← ★重要: サイズ制限/TLS設定
-  eop_antiphish.csv           ← EOP AntiPhishポリシー
-  eop_malware.csv             ← EOP Malwareポリシー
-  eop_spam.csv                ← EOP スパムフィルター
-  defender_safelinks.csv      ← Defender SafeLinksポリシー
-  defender_safeattach.csv     ← Defender SafeAttachmentsポリシー
-  summary.txt                 ← 統計サマリー
+  accepted_domains.csv             ← ★重要: ドメイン一覧とタイプ（Authoritative/InternalRelay）
+  inbound_connectors.csv           ← ★重要: 外部からの受信コネクタ
+  outbound_connectors.csv          ← ★重要: 外部への送信コネクタ
+  recipients.csv                   ← ★重要: 全受信者一覧（紛れ検出用）
+  mailboxes.csv                    ← メールボックス詳細（IsDirSynced含む）
+  mailbox_limits.csv               ← ★重要: メールボックス個別サイズ制限
+  distribution_groups.csv          ← ★重要: 配布グループ
+  unified_groups.csv               ← ★重要: M365グループ
+  cas_mailbox_protocols.csv        ← ★重要: POP/IMAP/MAPI/ActiveSync有効状態
+  pop_settings.json                ← POP3サーバー設定
+  imap_settings.json               ← IMAPサーバー設定
+  mailbox_permissions.csv          ← メールボックス権限
+  sendas_permissions.csv           ← SendAs権限
+  sendonbehalf_permissions.csv     ← SendOnBehalf権限
+  mailbox_forwarding.csv           ← ★重要: 転送設定（外部転送検出）
+  inbox_rules_external_forward.csv ← ★重要: InboxRule外部転送サンプル
+  transport_config.json            ← ★重要: サイズ制限/TLS設定
+  transport_rules.csv              ← Transport Rules一覧
+  transport_rules_routing.csv      ← ★重要: ルーティング/ヘッダ操作ルール
+  transport_rules_backup.xml       ← Transport Rules XMLバックアップ
+  eop_antiphish_policy.csv         ← EOP AntiPhishポリシー
+  eop_antiphish_rule.csv           ← EOP AntiPhishルール
+  eop_malware_policy.csv           ← EOP Malwareポリシー
+  eop_malware_rule.csv             ← EOP Malwareルール
+  eop_spam_policy.csv              ← EOP スパムフィルターポリシー
+  eop_spam_rule.csv                ← EOP スパムフィルタールール
+  eop_outbound_spam_policy.csv     ← ★重要: 送信スパム（AutoForwardingMode）
+  defender_safelinks_policy.csv    ← Defender SafeLinksポリシー
+  defender_safelinks_rule.csv      ← Defender SafeLinksルール
+  defender_safeattach_policy.csv   ← Defender SafeAttachmentsポリシー
+  defender_safeattach_rule.csv     ← Defender SafeAttachmentsルール
+  summary.txt                      ← 統計サマリー
 
 .PARAMETER OutRoot
   出力先ルートフォルダ
@@ -42,15 +64,26 @@
 .PARAMETER Tag
   出力フォルダのサフィックス（省略時は日時）
 
+.PARAMETER UseEXOv3
+  EXOv3 REST APIコマンドレット（Get-EXO*）を優先使用
+
+.PARAMETER InboxRuleSampleLimit
+  InboxRule外部転送サンプル取得数（デフォルト: 100）
+
 .EXAMPLE
   .\Collect-EXOInventory.ps1 -OutRoot C:\temp\inventory
+
+.EXAMPLE
+  .\Collect-EXOInventory.ps1 -UseEXOv3 -InboxRuleSampleLimit 200
 
 .NOTES
   必要モジュール: ExchangeOnlineManagement
 #>
 param(
   [string]$OutRoot = ".\inventory",
-  [string]$Tag = (Get-Date -Format "yyyyMMdd_HHmmss")
+  [string]$Tag = (Get-Date -Format "yyyyMMdd_HHmmss"),
+  [switch]$UseEXOv3,
+  [int]$InboxRuleSampleLimit = 100
 )
 
 # エラーアクションの設定
@@ -63,6 +96,9 @@ New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
 # グローバル変数（finally句で参照）
 $transcriptStarted = $false
 $exoConnected = $false
+$mailboxes = $null
+$distributionGroups = $null
+$unifiedGroups = $null
 
 try {
   # トランスクリプト開始
@@ -70,19 +106,20 @@ try {
   $transcriptStarted = $true
 
   Write-Host "============================================================"
-  Write-Host " Exchange Online 棚卸し"
+  Write-Host " Exchange Online 棚卸し（強化版）"
   Write-Host "============================================================"
   Write-Host "出力先: $OutDir"
+  if ($UseEXOv3) { Write-Host "モード: EXOv3 REST API優先" }
   Write-Host ""
 
-  Import-Module ExchangeOnlineManagement
+  Import-Module ExchangeOnlineManagement -ErrorAction Stop
   Connect-ExchangeOnline -ShowBanner:$false
   $exoConnected = $true
 
   #----------------------------------------------------------------------
   # 1. Organization Config（テナント設定）
   #----------------------------------------------------------------------
-  Write-Host "[1/19] テナント設定を取得中..."
+  Write-Host "[1/28] テナント設定を取得中..."
   $orgConfig = Get-OrganizationConfig
   $orgConfig | ConvertTo-Json -Depth 5 | Out-File (Join-Path $OutDir "org_config.json") -Encoding UTF8
 
@@ -90,7 +127,7 @@ try {
   # 2. ★重要：Accepted Domains（承認済みドメイン）
   #----------------------------------------------------------------------
   Write-Host ""
-  Write-Host "[2/19] ★ Accepted Domains を取得中..."
+  Write-Host "[2/28] ★ Accepted Domains を取得中..."
   Write-Host "      → ドメインタイプ（Authoritative/InternalRelay）を確認"
 
   $domains = Get-AcceptedDomain
@@ -110,7 +147,7 @@ try {
   # 3. ★重要：Inbound Connectors（受信コネクタ）
   #----------------------------------------------------------------------
   Write-Host ""
-  Write-Host "[3/19] ★ Inbound Connectors を取得中..."
+  Write-Host "[3/28] ★ Inbound Connectors を取得中..."
   Write-Host "      → 外部からEXOへの受信経路を確認"
 
   $inbound = Get-InboundConnector
@@ -128,7 +165,7 @@ try {
   # 4. ★重要：Outbound Connectors（送信コネクタ）
   #----------------------------------------------------------------------
   Write-Host ""
-  Write-Host "[4/19] ★ Outbound Connectors を取得中..."
+  Write-Host "[4/28] ★ Outbound Connectors を取得中..."
   Write-Host "      → EXOから外部への送信経路を確認"
 
   $outbound = Get-OutboundConnector
@@ -145,7 +182,7 @@ try {
   # 5. ★重要：Recipients（全受信者）
   #----------------------------------------------------------------------
   Write-Host ""
-  Write-Host "[5/19] ★ 全受信者を取得中..."
+  Write-Host "[5/28] ★ 全受信者を取得中..."
   Write-Host "      → 紛れ検出（Detect-StrayRecipients）の入力になります"
   Write-Host "      → 大規模テナントでは時間がかかります"
 
@@ -169,7 +206,7 @@ try {
   # 6. Mailboxes（メールボックス詳細）
   #----------------------------------------------------------------------
   Write-Host ""
-  Write-Host "[6/19] メールボックス詳細を取得中..."
+  Write-Host "[6/28] メールボックス詳細を取得中..."
 
   $mailboxes = Get-Mailbox -ResultSize Unlimited
   $mailboxes | Select-Object DisplayName,PrimarySmtpAddress,
@@ -189,10 +226,10 @@ try {
   Write-Host "        - クラウド作成: $cloudCreated"
 
   #----------------------------------------------------------------------
-  # 7. Transport Rules（メールフロールール）
+  # 7. Transport Rules（メールフロールール）+ ルーティング/ヘッダ操作ルール検出
   #----------------------------------------------------------------------
   Write-Host ""
-  Write-Host "[7/19] Transport Rules を取得中..."
+  Write-Host "[7/28] Transport Rules を取得中..."
 
   $rules = Get-TransportRule
   $rules | Select-Object Name,State,Priority,Mode,
@@ -203,11 +240,54 @@ try {
 
   Write-Host "      → Transport Rules: $($rules.Count)"
 
+  # ルーティング/ヘッダ操作ルールの検出
+  Write-Host "      → ルーティング/ヘッダ操作ルールを検出中..."
+  $routingHeaderRules = $rules | Where-Object {
+    # ルーティング変更系
+    $_.RedirectMessageTo -or
+    $_.RouteMessageOutboundConnector -or
+    $_.RouteMessageOutboundRequireTls -or
+    # ヘッダ操作系
+    $_.SetHeaderName -or
+    $_.RemoveHeader -or
+    $_.PrependSubject -or
+    $_.ModifySubject -or
+    # BCC追加系
+    $_.BlindCopyTo
+  }
+
+  if ($routingHeaderRules -and $routingHeaderRules.Count -gt 0) {
+    $routingHeaderRules | Select-Object Name,State,Priority,
+      @{n="RedirectTo";e={$_.RedirectMessageTo -join ";"}},
+      @{n="OutboundConnector";e={$_.RouteMessageOutboundConnector}},
+      @{n="SetHeader";e={if ($_.SetHeaderName) { "$($_.SetHeaderName):$($_.SetHeaderValue)" } else { "" }}},
+      @{n="RemoveHeader";e={$_.RemoveHeader}},
+      @{n="PrependSubject";e={$_.PrependSubject}},
+      @{n="BlindCopyTo";e={$_.BlindCopyTo -join ";"}} |
+      Export-Csv -NoTypeInformation -Encoding UTF8 -Path (Join-Path $OutDir "transport_rules_routing.csv")
+    Write-Host "      → ルーティング/ヘッダ操作ルール: $($routingHeaderRules.Count) 件 → transport_rules_routing.csv"
+  } else {
+    "# ルーティング/ヘッダ操作ルールはありません" | Out-File (Join-Path $OutDir "transport_rules_routing.csv") -Encoding UTF8
+    Write-Host "      → ルーティング/ヘッダ操作ルール: なし"
+  }
+
+  # Transport Rules XMLバックアップ
+  Write-Host "      → Transport Rules XMLバックアップを取得中..."
+  try {
+    $ruleCollection = Export-TransportRuleCollection
+    if ($ruleCollection -and $ruleCollection.FileData) {
+      [System.IO.File]::WriteAllBytes((Join-Path $OutDir "transport_rules_backup.xml"), $ruleCollection.FileData)
+      Write-Host "      → Transport Rules XMLバックアップ: transport_rules_backup.xml"
+    }
+  } catch {
+    Write-Warning "Transport Rules XMLバックアップの取得に失敗: $_"
+  }
+
   #----------------------------------------------------------------------
   # 8. Remote Domains（リモートドメイン設定）
   #----------------------------------------------------------------------
   Write-Host ""
-  Write-Host "[8/19] Remote Domains を取得中..."
+  Write-Host "[8/28] Remote Domains を取得中..."
 
   $remoteDomains = Get-RemoteDomain
   $remoteDomains | Select-Object Name,DomainName,
@@ -219,28 +299,39 @@ try {
   Write-Host "      → Remote Domains: $($remoteDomains.Count)"
 
   #----------------------------------------------------------------------
-  # 9. ★新規：EOP AntiPhishポリシー
+  # 9. ★EOP AntiPhishポリシー + ルール
   #----------------------------------------------------------------------
   Write-Host ""
-  Write-Host "[9/19] ★ EOP AntiPhishポリシーを取得中..."
+  Write-Host "[9/28] ★ EOP AntiPhishポリシーを取得中..."
 
   try {
     $antiPhish = Get-AntiPhishPolicy
     $antiPhish | Select-Object Name,IsDefault,Enabled,
       PhishThresholdLevel,EnableMailboxIntelligence,EnableMailboxIntelligenceProtection,
       EnableSpoofIntelligence,EnableUnauthenticatedSender,EnableViaTag |
-      Export-Csv -NoTypeInformation -Encoding UTF8 -Path (Join-Path $OutDir "eop_antiphish.csv")
-    $antiPhish | ConvertTo-Json -Depth 10 | Out-File (Join-Path $OutDir "eop_antiphish.json") -Encoding UTF8
+      Export-Csv -NoTypeInformation -Encoding UTF8 -Path (Join-Path $OutDir "eop_antiphish_policy.csv")
+    $antiPhish | ConvertTo-Json -Depth 10 | Out-File (Join-Path $OutDir "eop_antiphish_policy.json") -Encoding UTF8
     Write-Host "      → AntiPhishポリシー: $($antiPhish.Count)"
+
+    # AntiPhishルール
+    $antiPhishRules = Get-AntiPhishRule -ErrorAction SilentlyContinue
+    if ($antiPhishRules) {
+      $antiPhishRules | Select-Object Name,State,Priority,AntiPhishPolicy,
+        @{n="SentTo";e={$_.SentTo -join ";"}},
+        @{n="SentToMemberOf";e={$_.SentToMemberOf -join ";"}},
+        @{n="RecipientDomainIs";e={$_.RecipientDomainIs -join ";"}} |
+        Export-Csv -NoTypeInformation -Encoding UTF8 -Path (Join-Path $OutDir "eop_antiphish_rule.csv")
+      Write-Host "      → AntiPhishルール: $($antiPhishRules.Count)"
+    }
   } catch {
     Write-Warning "AntiPhishポリシーの取得に失敗: $_"
   }
 
   #----------------------------------------------------------------------
-  # 10. ★新規：EOP Malwareフィルターポリシー
+  # 10. ★EOP Malwareフィルターポリシー + ルール
   #----------------------------------------------------------------------
   Write-Host ""
-  Write-Host "[10/19] ★ EOP Malwareフィルターポリシーを取得中..."
+  Write-Host "[10/28] ★ EOP Malwareフィルターポリシーを取得中..."
 
   try {
     $malware = Get-MalwareFilterPolicy
@@ -248,18 +339,28 @@ try {
       Action,EnableFileFilter,EnableInternalSenderAdminNotifications,
       EnableExternalSenderAdminNotifications,
       @{n="FileTypes";e={$_.FileTypes -join ";"}} |
-      Export-Csv -NoTypeInformation -Encoding UTF8 -Path (Join-Path $OutDir "eop_malware.csv")
-    $malware | ConvertTo-Json -Depth 10 | Out-File (Join-Path $OutDir "eop_malware.json") -Encoding UTF8
+      Export-Csv -NoTypeInformation -Encoding UTF8 -Path (Join-Path $OutDir "eop_malware_policy.csv")
+    $malware | ConvertTo-Json -Depth 10 | Out-File (Join-Path $OutDir "eop_malware_policy.json") -Encoding UTF8
     Write-Host "      → Malwareポリシー: $($malware.Count)"
+
+    # Malwareルール
+    $malwareRules = Get-MalwareFilterRule -ErrorAction SilentlyContinue
+    if ($malwareRules) {
+      $malwareRules | Select-Object Name,State,Priority,MalwareFilterPolicy,
+        @{n="SentTo";e={$_.SentTo -join ";"}},
+        @{n="RecipientDomainIs";e={$_.RecipientDomainIs -join ";"}} |
+        Export-Csv -NoTypeInformation -Encoding UTF8 -Path (Join-Path $OutDir "eop_malware_rule.csv")
+      Write-Host "      → Malwareルール: $($malwareRules.Count)"
+    }
   } catch {
     Write-Warning "Malwareポリシーの取得に失敗: $_"
   }
 
   #----------------------------------------------------------------------
-  # 11. ★新規：EOP ホステッドコンテンツフィルター（スパム）
+  # 11. ★EOP ホステッドコンテンツフィルター（スパム）ポリシー + ルール
   #----------------------------------------------------------------------
   Write-Host ""
-  Write-Host "[11/19] ★ EOP スパムフィルターポリシーを取得中..."
+  Write-Host "[11/28] ★ EOP スパムフィルターポリシーを取得中..."
 
   try {
     $spam = Get-HostedContentFilterPolicy
@@ -267,18 +368,57 @@ try {
       SpamAction,HighConfidenceSpamAction,PhishSpamAction,
       BulkThreshold,QuarantineRetentionPeriod,
       EnableEndUserSpamNotifications,EndUserSpamNotificationFrequency |
-      Export-Csv -NoTypeInformation -Encoding UTF8 -Path (Join-Path $OutDir "eop_spam.csv")
-    $spam | ConvertTo-Json -Depth 10 | Out-File (Join-Path $OutDir "eop_spam.json") -Encoding UTF8
+      Export-Csv -NoTypeInformation -Encoding UTF8 -Path (Join-Path $OutDir "eop_spam_policy.csv")
+    $spam | ConvertTo-Json -Depth 10 | Out-File (Join-Path $OutDir "eop_spam_policy.json") -Encoding UTF8
     Write-Host "      → スパムポリシー: $($spam.Count)"
+
+    # スパムルール
+    $spamRules = Get-HostedContentFilterRule -ErrorAction SilentlyContinue
+    if ($spamRules) {
+      $spamRules | Select-Object Name,State,Priority,HostedContentFilterPolicy,
+        @{n="SentTo";e={$_.SentTo -join ";"}},
+        @{n="RecipientDomainIs";e={$_.RecipientDomainIs -join ";"}} |
+        Export-Csv -NoTypeInformation -Encoding UTF8 -Path (Join-Path $OutDir "eop_spam_rule.csv")
+      Write-Host "      → スパムルール: $($spamRules.Count)"
+    }
   } catch {
     Write-Warning "スパムポリシーの取得に失敗: $_"
   }
 
   #----------------------------------------------------------------------
-  # 12. ★新規：Defender SafeLinksポリシー
+  # 12. ★HostedOutboundSpamFilterPolicy（AutoForwardingMode）
   #----------------------------------------------------------------------
   Write-Host ""
-  Write-Host "[12/19] ★ Defender SafeLinksポリシーを取得中..."
+  Write-Host "[12/28] ★ 送信スパムフィルターポリシー（AutoForwardingMode）を取得中..."
+
+  try {
+    $outboundSpam = Get-HostedOutboundSpamFilterPolicy
+    $outboundSpam | Select-Object Name,IsDefault,
+      AutoForwardingMode,
+      RecipientLimitExternalPerHour,RecipientLimitInternalPerHour,RecipientLimitPerDay,
+      ActionWhenThresholdReached |
+      Export-Csv -NoTypeInformation -Encoding UTF8 -Path (Join-Path $OutDir "eop_outbound_spam_policy.csv")
+    $outboundSpam | ConvertTo-Json -Depth 10 | Out-File (Join-Path $OutDir "eop_outbound_spam_policy.json") -Encoding UTF8
+
+    Write-Host "      → 送信スパムポリシー: $($outboundSpam.Count)"
+
+    # AutoForwardingModeを表示
+    foreach ($policy in $outboundSpam) {
+      $afMode = if ($policy.AutoForwardingMode) { $policy.AutoForwardingMode } else { "N/A" }
+      Write-Host "        - $($policy.Name): AutoForwardingMode = $afMode"
+      if ($afMode -eq "Off") {
+        Write-Host "          ★警告: 外部への自動転送がブロックされています" -ForegroundColor Yellow
+      }
+    }
+  } catch {
+    Write-Warning "送信スパムポリシーの取得に失敗: $_"
+  }
+
+  #----------------------------------------------------------------------
+  # 13. ★Defender SafeLinksポリシー + ルール
+  #----------------------------------------------------------------------
+  Write-Host ""
+  Write-Host "[13/28] ★ Defender SafeLinksポリシーを取得中..."
 
   try {
     $safeLinks = Get-SafeLinksPolicy -ErrorAction SilentlyContinue
@@ -287,9 +427,19 @@ try {
         EnableSafeLinksForEmail,EnableSafeLinksForTeams,EnableSafeLinksForOffice,
         ScanUrls,DeliverMessageAfterScan,EnableForInternalSenders,
         TrackClicks,AllowClickThrough |
-        Export-Csv -NoTypeInformation -Encoding UTF8 -Path (Join-Path $OutDir "defender_safelinks.csv")
-      $safeLinks | ConvertTo-Json -Depth 10 | Out-File (Join-Path $OutDir "defender_safelinks.json") -Encoding UTF8
+        Export-Csv -NoTypeInformation -Encoding UTF8 -Path (Join-Path $OutDir "defender_safelinks_policy.csv")
+      $safeLinks | ConvertTo-Json -Depth 10 | Out-File (Join-Path $OutDir "defender_safelinks_policy.json") -Encoding UTF8
       Write-Host "      → SafeLinksポリシー: $($safeLinks.Count)"
+
+      # SafeLinksルール
+      $safeLinksRules = Get-SafeLinksRule -ErrorAction SilentlyContinue
+      if ($safeLinksRules) {
+        $safeLinksRules | Select-Object Name,State,Priority,SafeLinksPolicy,
+          @{n="SentTo";e={$_.SentTo -join ";"}},
+          @{n="RecipientDomainIs";e={$_.RecipientDomainIs -join ";"}} |
+          Export-Csv -NoTypeInformation -Encoding UTF8 -Path (Join-Path $OutDir "defender_safelinks_rule.csv")
+        Write-Host "      → SafeLinksルール: $($safeLinksRules.Count)"
+      }
     } else {
       Write-Host "      → SafeLinksポリシー: なし（Defender未有効の可能性）"
     }
@@ -298,10 +448,10 @@ try {
   }
 
   #----------------------------------------------------------------------
-  # 13. ★新規：Defender SafeAttachmentsポリシー
+  # 14. ★Defender SafeAttachmentsポリシー + ルール
   #----------------------------------------------------------------------
   Write-Host ""
-  Write-Host "[13/19] ★ Defender SafeAttachmentsポリシーを取得中..."
+  Write-Host "[14/28] ★ Defender SafeAttachmentsポリシーを取得中..."
 
   try {
     $safeAttach = Get-SafeAttachmentPolicy -ErrorAction SilentlyContinue
@@ -309,9 +459,19 @@ try {
       $safeAttach | Select-Object Name,IsEnabled,
         Action,Redirect,RedirectAddress,
         Enable,ActionOnError |
-        Export-Csv -NoTypeInformation -Encoding UTF8 -Path (Join-Path $OutDir "defender_safeattach.csv")
-      $safeAttach | ConvertTo-Json -Depth 10 | Out-File (Join-Path $OutDir "defender_safeattach.json") -Encoding UTF8
+        Export-Csv -NoTypeInformation -Encoding UTF8 -Path (Join-Path $OutDir "defender_safeattach_policy.csv")
+      $safeAttach | ConvertTo-Json -Depth 10 | Out-File (Join-Path $OutDir "defender_safeattach_policy.json") -Encoding UTF8
       Write-Host "      → SafeAttachmentsポリシー: $($safeAttach.Count)"
+
+      # SafeAttachmentsルール
+      $safeAttachRules = Get-SafeAttachmentRule -ErrorAction SilentlyContinue
+      if ($safeAttachRules) {
+        $safeAttachRules | Select-Object Name,State,Priority,SafeAttachmentPolicy,
+          @{n="SentTo";e={$_.SentTo -join ";"}},
+          @{n="RecipientDomainIs";e={$_.RecipientDomainIs -join ";"}} |
+          Export-Csv -NoTypeInformation -Encoding UTF8 -Path (Join-Path $OutDir "defender_safeattach_rule.csv")
+        Write-Host "      → SafeAttachmentsルール: $($safeAttachRules.Count)"
+      }
     } else {
       Write-Host "      → SafeAttachmentsポリシー: なし（Defender未有効の可能性）"
     }
@@ -320,13 +480,22 @@ try {
   }
 
   #----------------------------------------------------------------------
-  # 14. ★新規：CASMailbox（POP/IMAP/MAPI/ActiveSync設定）
+  # 15. ★CASMailbox（POP/IMAP/MAPI/ActiveSync設定）
   #----------------------------------------------------------------------
   Write-Host ""
-  Write-Host "[14/19] ★ CASMailbox（プロトコル設定）を取得中..."
+  Write-Host "[15/28] ★ CASMailbox（プロトコル設定）を取得中..."
   Write-Host "      → POP/IMAP/MAPI/ActiveSyncの有効/無効状態を確認"
 
-  $casMailboxes = Get-CASMailbox -ResultSize Unlimited
+  if ($UseEXOv3) {
+    # EXOv3: Get-EXOCASMailbox（より高速）
+    $casMailboxes = Get-EXOCASMailbox -ResultSize Unlimited -PropertySets All -ErrorAction SilentlyContinue
+    if (-not $casMailboxes) {
+      $casMailboxes = Get-CASMailbox -ResultSize Unlimited
+    }
+  } else {
+    $casMailboxes = Get-CASMailbox -ResultSize Unlimited
+  }
+
   $casMailboxes | Select-Object DisplayName,PrimarySmtpAddress,
     PopEnabled,ImapEnabled,MAPIEnabled,ActiveSyncEnabled,
     OWAEnabled,ECPEnabled,EwsEnabled |
@@ -340,16 +509,96 @@ try {
   Write-Host "        - IMAP有効: $imapEnabled"
 
   #----------------------------------------------------------------------
-  # 15. ★新規：Mailbox権限
+  # 16. Get-PopSettings / Get-ImapSettings（サーバー側設定）
   #----------------------------------------------------------------------
   Write-Host ""
-  Write-Host "[15/19] ★ Mailbox権限を取得中..."
+  Write-Host "[16/28] POP/IMAPサーバー設定を取得中..."
+
+  try {
+    $popSettings = Get-PopSettings -ErrorAction SilentlyContinue
+    if ($popSettings) {
+      $popSettings | ConvertTo-Json -Depth 5 | Out-File (Join-Path $OutDir "pop_settings.json") -Encoding UTF8
+      Write-Host "      → POP設定: pop_settings.json"
+    }
+  } catch {
+    Write-Warning "POP設定の取得に失敗: $_"
+  }
+
+  try {
+    $imapSettings = Get-ImapSettings -ErrorAction SilentlyContinue
+    if ($imapSettings) {
+      $imapSettings | ConvertTo-Json -Depth 5 | Out-File (Join-Path $OutDir "imap_settings.json") -Encoding UTF8
+      Write-Host "      → IMAP設定: imap_settings.json"
+    }
+  } catch {
+    Write-Warning "IMAP設定の取得に失敗: $_"
+  }
+
+  #----------------------------------------------------------------------
+  # 17. ★配布グループの取得
+  #----------------------------------------------------------------------
+  Write-Host ""
+  Write-Host "[17/28] ★ 配布グループを取得中..."
+
+  try {
+    $distributionGroups = Get-DistributionGroup -ResultSize Unlimited
+    $distributionGroups | Select-Object DisplayName,PrimarySmtpAddress,
+      GroupType,ManagedBy,
+      @{n="Members";e={$_.Members -join ";"}},
+      @{n="AcceptMessagesOnlyFrom";e={$_.AcceptMessagesOnlyFrom -join ";"}},
+      @{n="GrantSendOnBehalfTo";e={$_.GrantSendOnBehalfTo -join ";"}},
+      HiddenFromAddressListsEnabled,IsDirSynced |
+      Export-Csv -NoTypeInformation -Encoding UTF8 -Path (Join-Path $OutDir "distribution_groups.csv")
+    $distributionGroups | ConvertTo-Json -Depth 10 | Out-File (Join-Path $OutDir "distribution_groups.json") -Encoding UTF8
+
+    Write-Host "      → 配布グループ: $($distributionGroups.Count)"
+  } catch {
+    Write-Warning "配布グループの取得に失敗: $_"
+  }
+
+  #----------------------------------------------------------------------
+  # 18. ★M365グループ（Unified Groups）の取得
+  #----------------------------------------------------------------------
+  Write-Host ""
+  Write-Host "[18/28] ★ M365グループ（Unified Groups）を取得中..."
+
+  try {
+    $unifiedGroups = Get-UnifiedGroup -ResultSize Unlimited -ErrorAction SilentlyContinue
+    if ($unifiedGroups) {
+      $unifiedGroups | Select-Object DisplayName,PrimarySmtpAddress,
+        AccessType,
+        @{n="Owners";e={$_.ManagedBy -join ";"}},
+        @{n="GrantSendOnBehalfTo";e={$_.GrantSendOnBehalfTo -join ";"}},
+        HiddenFromAddressListsEnabled,
+        WelcomeMessageEnabled,AutoSubscribeNewMembers |
+        Export-Csv -NoTypeInformation -Encoding UTF8 -Path (Join-Path $OutDir "unified_groups.csv")
+      $unifiedGroups | ConvertTo-Json -Depth 10 | Out-File (Join-Path $OutDir "unified_groups.json") -Encoding UTF8
+
+      Write-Host "      → M365グループ: $($unifiedGroups.Count)"
+    } else {
+      Write-Host "      → M365グループ: なし"
+    }
+  } catch {
+    Write-Warning "M365グループの取得に失敗: $_"
+  }
+
+  #----------------------------------------------------------------------
+  # 19. ★Mailbox権限
+  #----------------------------------------------------------------------
+  Write-Host ""
+  Write-Host "[19/28] ★ Mailbox権限を取得中..."
   Write-Host "      → 代理アクセス権限を確認（時間がかかる場合があります）"
 
   $mbxPermissions = @()
   foreach ($mbx in $mailboxes | Select-Object -First 1000) {  # 大規模環境では最初の1000件のみ
     try {
-      $perms = Get-MailboxPermission -Identity $mbx.Identity | Where-Object { $_.User -notlike "NT AUTHORITY\*" -and $_.User -notlike "S-1-5-*" }
+      if ($UseEXOv3) {
+        $perms = Get-EXOMailboxPermission -Identity $mbx.Identity -ErrorAction SilentlyContinue |
+          Where-Object { $_.User -notlike "NT AUTHORITY\*" -and $_.User -notlike "S-1-5-*" }
+      } else {
+        $perms = Get-MailboxPermission -Identity $mbx.Identity |
+          Where-Object { $_.User -notlike "NT AUTHORITY\*" -and $_.User -notlike "S-1-5-*" }
+      }
       foreach ($perm in $perms) {
         $mbxPermissions += [PSCustomObject]@{
           Mailbox = $mbx.PrimarySmtpAddress
@@ -371,15 +620,21 @@ try {
   Write-Host "      → Mailbox権限: $($mbxPermissions.Count) 件"
 
   #----------------------------------------------------------------------
-  # 16. ★新規：SendAs権限
+  # 20. ★SendAs権限
   #----------------------------------------------------------------------
   Write-Host ""
-  Write-Host "[16/19] ★ SendAs権限を取得中..."
+  Write-Host "[20/28] ★ SendAs権限を取得中..."
 
   $sendAsPermissions = @()
   foreach ($mbx in $mailboxes | Select-Object -First 1000) {  # 大規模環境では最初の1000件のみ
     try {
-      $perms = Get-RecipientPermission -Identity $mbx.Identity | Where-Object { $_.Trustee -notlike "NT AUTHORITY\*" -and $_.Trustee -notlike "S-1-5-*" }
+      if ($UseEXOv3) {
+        $perms = Get-EXORecipientPermission -Identity $mbx.Identity -ErrorAction SilentlyContinue |
+          Where-Object { $_.Trustee -notlike "NT AUTHORITY\*" -and $_.Trustee -notlike "S-1-5-*" }
+      } else {
+        $perms = Get-RecipientPermission -Identity $mbx.Identity |
+          Where-Object { $_.Trustee -notlike "NT AUTHORITY\*" -and $_.Trustee -notlike "S-1-5-*" }
+      }
       foreach ($perm in $perms) {
         $sendAsPermissions += [PSCustomObject]@{
           Mailbox = $mbx.PrimarySmtpAddress
@@ -400,10 +655,34 @@ try {
   Write-Host "      → SendAs権限: $($sendAsPermissions.Count) 件"
 
   #----------------------------------------------------------------------
-  # 17. ★新規：メールボックス転送設定
+  # 21. ★SendOnBehalf権限
   #----------------------------------------------------------------------
   Write-Host ""
-  Write-Host "[17/19] ★ メールボックス転送設定を取得中..."
+  Write-Host "[21/28] ★ SendOnBehalf権限を取得中..."
+
+  $sendOnBehalfPermissions = @()
+  foreach ($mbx in $mailboxes | Where-Object { $_.GrantSendOnBehalfTo }) {
+    foreach ($delegate in $mbx.GrantSendOnBehalfTo) {
+      $sendOnBehalfPermissions += [PSCustomObject]@{
+        Mailbox = $mbx.PrimarySmtpAddress
+        Delegate = $delegate
+      }
+    }
+  }
+
+  if ($sendOnBehalfPermissions.Count -gt 0) {
+    $sendOnBehalfPermissions | Export-Csv -NoTypeInformation -Encoding UTF8 -Path (Join-Path $OutDir "sendonbehalf_permissions.csv")
+    Write-Host "      → SendOnBehalf権限: $($sendOnBehalfPermissions.Count) 件"
+  } else {
+    "# SendOnBehalf権限はありません" | Out-File (Join-Path $OutDir "sendonbehalf_permissions.csv") -Encoding UTF8
+    Write-Host "      → SendOnBehalf権限: なし"
+  }
+
+  #----------------------------------------------------------------------
+  # 22. ★メールボックス転送設定
+  #----------------------------------------------------------------------
+  Write-Host ""
+  Write-Host "[22/28] ★ メールボックス転送設定を取得中..."
   Write-Host "      → 外部転送を検出"
 
   $forwarding = $mailboxes | Where-Object { $_.ForwardingSMTPAddress -or $_.ForwardingAddress } |
@@ -415,14 +694,91 @@ try {
     $forwarding | ConvertTo-Json -Depth 10 | Out-File (Join-Path $OutDir "mailbox_forwarding.json") -Encoding UTF8
     Write-Host "      → 転送設定あり: $($forwarding.Count) 件（要確認）"
   } else {
+    "# 転送設定はありません" | Out-File (Join-Path $OutDir "mailbox_forwarding.csv") -Encoding UTF8
     Write-Host "      → 転送設定あり: 0 件"
   }
 
   #----------------------------------------------------------------------
-  # 18. ★新規：保持ポリシー
+  # 23. ★InboxRule外部転送サンプル
   #----------------------------------------------------------------------
   Write-Host ""
-  Write-Host "[18/19] ★ 保持ポリシーを取得中..."
+  Write-Host "[23/28] ★ InboxRule外部転送サンプルを取得中（最大 $InboxRuleSampleLimit 件）..."
+
+  $inboxRulesExternal = @()
+  $sampleCount = 0
+
+  foreach ($mbx in $mailboxes | Select-Object -First $InboxRuleSampleLimit) {
+    try {
+      $rules = Get-InboxRule -Mailbox $mbx.Identity -ErrorAction SilentlyContinue
+      if ($rules) {
+        foreach ($rule in $rules) {
+          # 外部転送を検出（ForwardTo/ForwardAsAttachmentTo/RedirectTo）
+          $hasExternalForward = $false
+          $forwardTargets = @()
+
+          if ($rule.ForwardTo) {
+            $forwardTargets += $rule.ForwardTo
+            # 外部ドメインへの転送かチェック（簡易判定）
+            foreach ($target in $rule.ForwardTo) {
+              if ($target -match '@' -and $target -notmatch '\.onmicrosoft\.com') {
+                $hasExternalForward = $true
+              }
+            }
+          }
+          if ($rule.ForwardAsAttachmentTo) {
+            $forwardTargets += $rule.ForwardAsAttachmentTo
+            foreach ($target in $rule.ForwardAsAttachmentTo) {
+              if ($target -match '@' -and $target -notmatch '\.onmicrosoft\.com') {
+                $hasExternalForward = $true
+              }
+            }
+          }
+          if ($rule.RedirectTo) {
+            $forwardTargets += $rule.RedirectTo
+            foreach ($target in $rule.RedirectTo) {
+              if ($target -match '@' -and $target -notmatch '\.onmicrosoft\.com') {
+                $hasExternalForward = $true
+              }
+            }
+          }
+
+          if ($forwardTargets.Count -gt 0) {
+            $inboxRulesExternal += [PSCustomObject]@{
+              Mailbox = $mbx.PrimarySmtpAddress
+              RuleName = $rule.Name
+              Enabled = $rule.Enabled
+              ForwardTo = ($rule.ForwardTo -join ";")
+              ForwardAsAttachmentTo = ($rule.ForwardAsAttachmentTo -join ";")
+              RedirectTo = ($rule.RedirectTo -join ";")
+              IsExternalForward = $hasExternalForward
+            }
+          }
+        }
+      }
+      $sampleCount++
+    } catch {
+      # 個別のメールボックスでエラーが出ても継続
+    }
+  }
+
+  if ($inboxRulesExternal.Count -gt 0) {
+    $inboxRulesExternal | Export-Csv -NoTypeInformation -Encoding UTF8 -Path (Join-Path $OutDir "inbox_rules_external_forward.csv")
+    Write-Host "      → InboxRule転送ルール: $($inboxRulesExternal.Count) 件（サンプル $sampleCount 件から）"
+
+    $externalCount = ($inboxRulesExternal | Where-Object { $_.IsExternalForward }).Count
+    if ($externalCount -gt 0) {
+      Write-Host "      → ★警告: 外部転送ルール: $externalCount 件" -ForegroundColor Yellow
+    }
+  } else {
+    "# InboxRule転送ルールはありません" | Out-File (Join-Path $OutDir "inbox_rules_external_forward.csv") -Encoding UTF8
+    Write-Host "      → InboxRule転送ルール: なし"
+  }
+
+  #----------------------------------------------------------------------
+  # 24. ★保持ポリシー
+  #----------------------------------------------------------------------
+  Write-Host ""
+  Write-Host "[24/28] ★ 保持ポリシーを取得中..."
 
   try {
     $retentionPolicies = Get-RetentionPolicy
@@ -436,10 +792,10 @@ try {
   }
 
   #----------------------------------------------------------------------
-  # 19. ★新規：Transport設定（サイズ制限/TLS設定）
+  # 25. ★Transport設定（サイズ制限/TLS設定）
   #----------------------------------------------------------------------
   Write-Host ""
-  Write-Host "[19/19] ★ Transport設定（サイズ制限/TLS）を取得中..."
+  Write-Host "[25/28] ★ Transport設定（サイズ制限/TLS）を取得中..."
 
   $transportConfig = Get-TransportConfig
   $transportConfig | ConvertTo-Json -Depth 10 | Out-File (Join-Path $OutDir "transport_config.json") -Encoding UTF8
@@ -459,11 +815,43 @@ try {
   Write-Host "      → MaxReceiveSize: $($transportConfig.MaxReceiveSize)"
 
   #----------------------------------------------------------------------
-  # サマリー作成
+  # 26. ★Mailbox個別サイズ制限
   #----------------------------------------------------------------------
+  Write-Host ""
+  Write-Host "[26/28] ★ Mailbox個別サイズ制限を取得中..."
+
+  $mailboxLimits = $mailboxes | Select-Object DisplayName,PrimarySmtpAddress,
+    MaxSendSize,MaxReceiveSize,
+    @{n="RecipientLimits";e={$_.RecipientLimits}},
+    ProhibitSendQuota,ProhibitSendReceiveQuota,IssueWarningQuota
+
+  $mailboxLimits | Export-Csv -NoTypeInformation -Encoding UTF8 -Path (Join-Path $OutDir "mailbox_limits.csv")
+
+  # カスタム制限を持つメールボックスを検出
+  $customLimits = $mailboxes | Where-Object {
+    $_.MaxSendSize -ne "Unlimited" -or
+    $_.MaxReceiveSize -ne "Unlimited" -or
+    $_.RecipientLimits -ne "Unlimited"
+  }
+
+  if ($customLimits.Count -gt 0) {
+    Write-Host "      → カスタム制限あり: $($customLimits.Count) 件"
+  } else {
+    Write-Host "      → カスタム制限あり: なし（全て既定値）"
+  }
+
+  #----------------------------------------------------------------------
+  # 27-28. サマリー作成
+  #----------------------------------------------------------------------
+  Write-Host ""
+  Write-Host "[27/28] サマリーを作成中..."
+
+  # InboxRule外部転送数を集計
+  $inboxRulesExternalCount = if ($inboxRulesExternal) { ($inboxRulesExternal | Where-Object { $_.IsExternalForward }).Count } else { 0 }
+
   $summary = @"
 #===============================================================================
-# Exchange Online 棚卸しサマリー
+# Exchange Online 棚卸しサマリー（強化版）
 #===============================================================================
 
 【実行日時】$(Get-Date -Format "yyyy-MM-dd HH:mm:ss")
@@ -478,33 +866,47 @@ try {
   Outbound: $($outbound.Count)
 
 【受信者】
-  総数:           $($recipients.Count)
-  メールボックス: $($mailboxes.Count)
-    - DirSync同期:  $dirSynced
-    - クラウド作成: $cloudCreated
+  総数:             $($recipients.Count)
+  メールボックス:   $($mailboxes.Count)
+    - DirSync同期:    $dirSynced
+    - クラウド作成:   $cloudCreated
+  配布グループ:     $(if ($distributionGroups) { $distributionGroups.Count } else { "未取得" })
+  M365グループ:     $(if ($unifiedGroups) { $unifiedGroups.Count } else { "未取得" })
 
 【Transport Rules】 $($rules.Count)
+  - ルーティング/ヘッダ操作: $(if ($routingHeaderRules) { $routingHeaderRules.Count } else { 0 }) 件
 【Remote Domains】  $($remoteDomains.Count)
 
 【セキュリティポリシー】
-  AntiPhish:        $(if ($antiPhish) { $antiPhish.Count } else { "未取得" })
-  Malware:          $(if ($malware) { $malware.Count } else { "未取得" })
-  Spam:             $(if ($spam) { $spam.Count } else { "未取得" })
-  SafeLinks:        $(if ($safeLinks) { $safeLinks.Count } else { "未有効" })
-  SafeAttachments:  $(if ($safeAttach) { $safeAttach.Count } else { "未有効" })
+  AntiPhishポリシー:      $(if ($antiPhish) { $antiPhish.Count } else { "未取得" })
+  Malwareポリシー:        $(if ($malware) { $malware.Count } else { "未取得" })
+  Spamポリシー:           $(if ($spam) { $spam.Count } else { "未取得" })
+  送信Spamポリシー:       $(if ($outboundSpam) { $outboundSpam.Count } else { "未取得" })
+  SafeLinksポリシー:      $(if ($safeLinks) { $safeLinks.Count } else { "未有効" })
+  SafeAttachmentsポリシー:$(if ($safeAttach) { $safeAttach.Count } else { "未有効" })
+
+【AutoForwardingMode】
+$(if ($outboundSpam) {
+  ($outboundSpam | ForEach-Object { "  $($_.Name): $($_.AutoForwardingMode)" }) -join "`n"
+} else {
+  "  未取得"
+})
 
 【プロトコル設定】
   POP有効:  $popEnabled / $($casMailboxes.Count)
   IMAP有効: $imapEnabled / $($casMailboxes.Count)
 
 【権限・転送】
-  Mailbox権限:  $($mbxPermissions.Count) 件
-  SendAs権限:   $($sendAsPermissions.Count) 件
-  転送設定:     $(if ($forwarding) { $forwarding.Count } else { 0 }) 件
+  Mailbox権限:      $($mbxPermissions.Count) 件
+  SendAs権限:       $($sendAsPermissions.Count) 件
+  SendOnBehalf権限: $($sendOnBehalfPermissions.Count) 件
+  転送設定:         $(if ($forwarding) { $forwarding.Count } else { 0 }) 件
+  InboxRule外部転送: $inboxRulesExternalCount 件
 
 【サイズ制限】
   MaxSendSize:    $($transportConfig.MaxSendSize)
   MaxReceiveSize: $($transportConfig.MaxReceiveSize)
+  カスタム制限:   $(if ($customLimits) { $customLimits.Count } else { 0 }) 件
 
 #-------------------------------------------------------------------------------
 # 確認すべきファイル
@@ -527,6 +929,14 @@ try {
      → IsDirSynced列でAD同期状態を確認
      → クラウド作成のメールボックスは要注意（紛れの可能性）
 
+  ★ mailbox_limits.csv
+     → メールボックス個別のサイズ制限
+     → MaxSendSize/MaxReceiveSize/RecipientLimits
+
+  ★ distribution_groups.csv / unified_groups.csv
+     → 配布グループとM365グループ
+     → GrantSendOnBehalfToを確認
+
   ★ cas_mailbox_protocols.csv
      → POP/IMAP有効状態を確認
      → セキュリティポリシーで無効化を検討
@@ -535,12 +945,31 @@ try {
      → 外部転送設定を確認
      → データ漏洩リスクの可能性
 
+  ★ inbox_rules_external_forward.csv
+     → InboxRuleによる外部転送
+     → IsExternalForward=Trueのものは要確認
+
+  ★ transport_rules_routing.csv
+     → ルーティング/ヘッダ操作を行うトランスポートルール
+     → リダイレクト、ヘッダ変更などを確認
+
+  ★ transport_rules_backup.xml
+     → トランスポートルールのXMLバックアップ
+     → Import-TransportRuleCollectionで復元可能
+
   ★ transport_config.json / transport_config.csv
      → サイズ制限・TLS設定を確認
      → EXO: 送信35MB/受信36MB（オンプレと整合確認）
 
-  ★ eop_*.csv / defender_*.csv
-     → セキュリティポリシーの設定状況を確認
+  ★ eop_outbound_spam_policy.csv
+     → 送信スパムポリシー
+     → AutoForwardingMode を確認（Off=外部転送ブロック）
+
+  ★ eop_*_policy.csv / eop_*_rule.csv
+     → EOPポリシーとルールの対応を確認
+
+  ★ defender_*_policy.csv / defender_*_rule.csv
+     → Defenderポリシーとルールの対応を確認
 
 #-------------------------------------------------------------------------------
 # 注意事項
@@ -557,10 +986,21 @@ try {
   SafeLinks/SafeAttachmentsが「未有効」の場合、Defender for Office 365
   ライセンスが割り当てられていない可能性があります。
 
+  【AutoForwardingMode】
+  - Automatic: 外部転送を自動判定（一部ブロック）
+  - Off: 外部への自動転送を完全ブロック
+  - On: 外部への自動転送を許可
+
+  【EXOv3オプション】
+  -UseEXOv3 を指定すると、Get-EXO* コマンドレット（REST API）を優先使用します。
+  大規模環境ではパフォーマンスが向上する場合があります。
+
 "@
 
   $summary | Out-File (Join-Path $OutDir "summary.txt") -Encoding UTF8
 
+  Write-Host ""
+  Write-Host "[28/28] 完了"
   Write-Host ""
   Write-Host "============================================================"
   Write-Host " 完了"
