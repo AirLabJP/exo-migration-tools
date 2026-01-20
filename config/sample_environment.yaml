@@ -65,11 +65,19 @@ active_directory:
 # メールセキュリティ
 # ------------------------------------------------------------
 mail_security:
-  # GuardianWall Cloud
-  guardianwall:
-    smart_host: "gwc.example.com"
+  # 送信セキュリティサービス（添付ファイルURL化）
+  # 導入する場合のみ設定。未導入の場合はenabled: false
+  outbound_security:
+    enabled: false  # true: 導入する, false: 未導入（EXO直接送信）
+    service_type: ""  # "guardianwall_cloud" / "hennge_one" / "mxhero" / "m-filter" / ""
+    smart_host: ""  # サービスのスマートホスト
     port: 25
     tls_required: true
+  
+  # 現行GuardianWallサーバー版（参考情報）
+  current_guardianwall:
+    hostname: "gw.aws.example.com"
+    # 新サービス移行時の設定参考用
   
   # FireEye（受信セキュリティ）
   fireeye:
@@ -107,7 +115,7 @@ smtp_servers:
 # EXO コネクタ名
 # ------------------------------------------------------------
 exo_connectors:
-  outbound_gwc: "To-GuardianWall-Cloud"
+  outbound_mailsecurity: "To-MailSecurity-Service"  # 送信セキュリティ導入時のみ
   outbound_fallback: "To-OnPrem-DMZ-Fallback"
   inbound_aws: "From-AWS-DMZ-SMTP"
 
@@ -115,7 +123,7 @@ exo_connectors:
 # Transport Rule 名
 # ------------------------------------------------------------
 transport_rules:
-  external_via_gwc: "Route-External-Via-GWC"
+  external_via_mailsecurity: "Route-External-Via-MailSecurity"  # 送信セキュリティ導入時のみ
   internal_fallback: "Route-Internal-Unmigrated-Via-Fallback"
   block_forwarding: "Block-External-Forwarding"
   loop_marker: "Add-EXO-Loop-Marker"

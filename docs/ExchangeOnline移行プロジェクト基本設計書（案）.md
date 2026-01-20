@@ -88,7 +88,7 @@ tags:
 | 3 | Exchange Online | 移行後メールボックス | Accepted Domain、コネクタ設定 |
 | 4 | 内部DMZ SMTP | フォールバック中継 | EXOからの受信許可 |
 | 5 | Courier IMAP | 未移行ユーザーメールボックス | **変更なし** |
-| 6 | GuardianWall Cloud | 送信セキュリティ | EXO連携設定 |
+| 6 | 送信セキュリティサービス | 送信セキュリティ（添付URL化） | EXO連携設定（導入時） |
 | 7 | Active Directory | ID管理 | スキーマ拡張、メール属性投入 |
 | 8 | Entra ID Connect | 同期 | **変更なし**（同期対象属性追加） |
 
@@ -117,15 +117,16 @@ Outlook → Exchange Online → [Outbound Connector: To-OnPrem-DMZ-Fallback]
 - **トリガー**: Accepted Domain = InternalRelay、EXOにメールボックスなし
 - **Transport Rule**: 内部ドメイン宛はフォールバック経路を使用
 
-#### パターン3: EXOユーザー → 外部（添付URL化あり）
+#### パターン3: EXOユーザー → 外部（添付URL化ありの場合）
 
 ```
-Outlook → Exchange Online → [Outbound Connector: To-GuardianWall-Cloud]
-         → GuardianWall Cloud → インターネット
+Outlook → Exchange Online → [Outbound Connector: To-MailSecurity-Service]
+         → 送信セキュリティサービス → インターネット
 ```
 
 - **トリガー**: 宛先が外部ドメイン
-- **Transport Rule**: 外部宛はGWC経由
+- **Transport Rule**: 外部宛はセキュリティサービス経由
+- **備考**: 送信セキュリティサービス未導入の場合はEXOから直接送信
 
 #### パターン4: 未移行ユーザー → EXOユーザー
 
@@ -146,10 +147,11 @@ Thunderbird → Postfix（SMTPハブ）→ Courier IMAP
 #### パターン6: 未移行ユーザー → 外部
 
 ```
-Thunderbird → Postfix（SMTPハブ）→ GuardianWall → AWS DMZ SMTP → インターネット
+Thunderbird → Postfix（SMTPハブ）→ 現行GWサーバー → AWS DMZ SMTP → インターネット
 ```
 
 - **経路**: 既存のまま（変更なし）
+- **備考**: 現行AWS上のGuardianWallサーバー版を継続利用
 
 ### 3.2 受信フロー
 
@@ -171,10 +173,10 @@ Thunderbird → Postfix（SMTPハブ）→ GuardianWall → AWS DMZ SMTP → イ
 |---|---|---|---|---|
 | 1 | EXO | EXO | EXO内部 | |
 | 2 | EXO | 未移行 | EXO → 内部DMZ → Courier | Internal Relay |
-| 3 | EXO | 外部 | EXO → GWC → Internet | 添付URL化 |
+| 3 | EXO | 外部 | EXO → セキュリティサービス → Internet | 添付URL化（導入時） |
 | 4 | 未移行 | EXO | Postfix → AWS DMZ → EXO | |
 | 5 | 未移行 | 未移行 | Postfix → Courier | 既存のまま |
-| 6 | 未移行 | 外部 | Postfix → GWC → AWS DMZ | 既存のまま |
+| 6 | 未移行 | 外部 | Postfix → 現行GW → AWS DMZ | 既存のまま |
 | 7 | 外部 | EXO | FireEye → AWS DMZ → EXO | |
 | 8 | 外部 | 未移行 | FireEye → AWS DMZ → Courier | 既存のまま |
 
@@ -207,16 +209,17 @@ Thunderbird → Postfix（SMTPハブ）→ GuardianWall → AWS DMZ SMTP → イ
 | TLS | 必須 |
 | 用途 | 内部からの受信を許可 |
 
-#### Outbound Connector: To-GuardianWall-Cloud
+#### Outbound Connector: To-MailSecurity-Service（送信セキュリティサービス導入時）
 
 | 項目 | 設定値 |
 |---|---|
-| 名前 | To-GuardianWall-Cloud |
+| 名前 | To-MailSecurity-Service（例: To-GuardianWall-Cloud） |
 | 種類 | Partner |
-| SmartHost | （GWCのスマートホスト）※要確認 |
+| SmartHost | （セキュリティサービスのスマートホスト）※要確認 |
 | TLS | 必須 |
 | 用途 | 外部宛の添付URL化 |
 | 適用条件 | Transport Ruleで外部宛を指定 |
+| 備考 | 送信セキュリティサービス未導入の場合は不要 |
 
 #### Outbound Connector: To-OnPrem-DMZ-Fallback
 
@@ -231,14 +234,15 @@ Thunderbird → Postfix（SMTPハブ）→ GuardianWall → AWS DMZ SMTP → イ
 
 ### 4.3 Transport Rule設計
 
-#### ルール1: 外部宛はGWC経由
+#### ルール1: 外部宛はセキュリティサービス経由（導入時）
 
 | 項目 | 設定値 |
 |---|---|
-| 名前 | Route-External-Via-GWC |
+| 名前 | Route-External-Via-MailSecurity |
 | 条件 | 宛先が組織外 |
-| アクション | To-GuardianWall-Cloud経由でルーティング |
+| アクション | To-MailSecurity-Service経由でルーティング |
 | 優先度 | 1 |
+| 備考 | 送信セキュリティサービス未導入の場合はこのルール不要 |
 
 #### ルール2: 未移行ユーザー宛はフォールバック経由
 
@@ -447,7 +451,7 @@ example.co.jp    smtp:[courier-imap.internal:25]
 |---|---|---|---|
 | 1 | パイロットドメイン | Accepted Domain、transport | 選定済み・未共有 |
 | 2 | 移行対象ユーザー一覧 | AD属性投入 | 未受領 |
-| 3 | GuardianWall Cloudスマートホスト | Outbound Connector | 未確認 |
+| 3 | 送信セキュリティスマートホスト | Outbound Connector | 未確認（サービス選定後） |
 | 4 | 内部DMZ SMTP FQDN/IP | Outbound Connector | 未確認 |
 | 5 | AWS DMZ SMTP IP | Inbound Connector | 未確認 |
 | 6 | ライセンスグループ名 | グループベースライセンス | 未決定 |
@@ -474,7 +478,7 @@ example.co.jp    smtp:[courier-imap.internal:25]
 |---|---|---|---|
 | 1 | EXO→EXO | 配送成功 | □ |
 | 2 | EXO→未移行 | Courier IMAPに配送 | □ |
-| 3 | EXO→外部 | GWC経由で配送 | □ |
+| 3 | EXO→外部 | セキュリティサービス経由で配送 | □ |
 | 4 | 未移行→EXO | EXOに配送 | □ |
 | 5 | 外部→EXO | EXOに配送 | □ |
 | 6 | 外部転送ブロック | 拒否 | □ |
