@@ -11,6 +11,8 @@ Linux（Postfix/Courier IMAP）ベースのメールシステムからExchange O
 | [要件定義書（案）](docs/ExchangeOnline移行プロジェクト要件定義書（案）.md) | プロジェクト要件 |
 | [基本設計書（案）](docs/ExchangeOnline移行プロジェクト基本設計書（案）.md) | システム設計 |
 | [実践ガイド](docs/ExchangeOnline移行プロジェクト実践ガイド.md) | 移行戦略・メールフロー設計 |
+| [Outlook設定手順書](docs/ユーザー向けOutlook設定手順書.md) | ユーザー向けOutlook設定ガイド |
+| [過去メール移行手順書](docs/ユーザー向け過去メール移行手順書.md) | Thunderbird→Outlook移行ガイド |
 
 ## 想定環境
 
@@ -68,7 +70,8 @@ exo-migration-tools/
 ├── analysis/                     # 分析・検証スクリプト
 │   ├── Detect-StrayRecipients.ps1
 │   ├── Test-SmtpDuplicates.ps1
-│   └── Plan-RecipientRemediation.ps1  # 紛れ対処計画
+│   ├── Plan-RecipientRemediation.ps1  # 紛れ対処計画
+│   └── Invoke-RecipientRemediation.ps1 # 紛れ対処実行 ★NEW
 │
 ├── execution/                    # 実行スクリプト（フェーズ別）
 │   ├── phase1-preparation/       # Phase1: 事前準備
@@ -80,6 +83,7 @@ exo-migration-tools/
 │   │   ├── New-EntraUsersFromCsv.ps1      # Entra IDユーザー作成（CSVベース）
 │   │   ├── Set-ADMailAddressesFromCsv.ps1 # ADメール属性投入
 │   │   ├── New-EXOConnectors.ps1          # EXOコネクタ作成
+│   │   ├── New-EXOTransportRules.ps1      # Transport Rule作成 ★NEW
 │   │   └── Add-UsersToLicenseGroup.ps1    # ライセンスグループへのユーザー追加
 │
 ├── templates/                    # CSVテンプレート
@@ -124,7 +128,9 @@ exo-migration-tools/
     ├── ExchangeOnline移行プロジェクト実践ガイド.md
     ├── ExchangeOnline移行プロジェクト要件定義書（案）.md
     ├── ExchangeOnline移行プロジェクト基本設計書（案）.md
-    └── ExchangeOnline移行プロジェクト_お客様ヒアリング事項（スライド用）.md
+    ├── ExchangeOnline移行プロジェクト_お客様ヒアリング事項（スライド用）.md
+    ├── ユーザー向けOutlook設定手順書.md    # ★NEW
+    └── ユーザー向け過去メール移行手順書.md  # ★NEW
 ```
 
 ## 設計方針
@@ -140,6 +146,8 @@ exo-migration-tools/
 | `Set-ADMailAddressesFromCsv.ps1` | 既存値を上書き（WhatIfで事前確認推奨） |
 | `Add-UsersToLicenseGroup.ps1` | 既存メンバーはスキップ |
 | `New-EXOConnectors.ps1` | 既存コネクタがあればエラー（手動確認推奨） |
+| `New-EXOTransportRules.ps1` | 既存ルールがあればスキップ |
+| `Invoke-RecipientRemediation.ps1` | 対処計画CSVに従い実行（WhatIf推奨） |
 | `Set-AcceptedDomainType.ps1` | 変更なしの場合はスキップ |
 | Bash系（transport変更） | バックアップを取って上書き |
 
@@ -229,6 +237,16 @@ sudo bash inventory/collect_smtp_dmz.sh /tmp/inventory
 .\analysis\Plan-RecipientRemediation.ps1 `
   -StrayReportPath C:\temp\stray_report\*\strays_action_required.csv `
   -AutoClassify
+
+# 紛れ対処を実行（計画CSVを確認・承認後）
+# WhatIfで確認
+.\analysis\Invoke-RecipientRemediation.ps1 `
+  -RemediationPlanPath C:\temp\remediation_plan\*\remediation_plan.csv `
+  -WhatIfMode
+
+# 本番実行
+.\analysis\Invoke-RecipientRemediation.ps1 `
+  -RemediationPlanPath C:\temp\remediation_plan\*\remediation_plan.csv
 ```
 
 #### 1-5. EXO設定スナップショット
@@ -312,7 +330,27 @@ CSVテンプレートは `templates/` フォルダを参照。本番用・検証
   -TargetDomainsFile domains.txt
 ```
 
-#### 2-4. ライセンス付与用グループへのユーザー追加
+#### 2-4. EXO Transport Rule 作成
+
+メールフロー制御に必要な Transport Rule を作成します。
+
+```powershell
+# WhatIfで確認
+.\execution\phase2-setup\New-EXOTransportRules.ps1 `
+  -TargetDomainsFile domains.txt `
+  -WhatIfMode
+
+# 本番実行
+.\execution\phase2-setup\New-EXOTransportRules.ps1 `
+  -TargetDomainsFile domains.txt
+```
+
+作成されるルール:
+- **Block-ExternalForwarding**: 外部への自動転送をブロック
+- **Add-LoopPreventionHeader**: ループ防止ヘッダを付与
+- **Route-ExternalViaGWC**: 外部宛をGuardianWall Cloud経由でルーティング
+
+#### 2-5. ライセンス付与用グループへのユーザー追加
 
 移行中は**静的グループ**を使用し、CSVで指定したユーザーのみにライセンスを付与します。
 動的グループは全ドメイン移行完了後に切り替えることで、意図しないメールボックス作成を防止します。
@@ -502,6 +540,8 @@ tar, grep, find  # 標準ツール
 | Test-Prerequisites.ps1 | `prereq_check/<timestamp>/` | prereq_check_results.json, summary.txt |
 | Set-AcceptedDomainType.ps1 | `accepted_domain_change/<timestamp>/` | change_results.csv |
 | Test-MailFlowMatrix.ps1 | `mailflow_validation/<timestamp>/` | validation_results.csv |
+| New-EXOTransportRules.ps1 | `transport_rules/<timestamp>/` | rule_creation_results.csv |
+| Invoke-RecipientRemediation.ps1 | `remediation_execution/<timestamp>/` | remediation_results.csv |
 
 ## 注意事項
 
