@@ -1,0 +1,13 @@
+# Courier authdaemon設定
+# userdb認証を使用
+
+# 認証モジュール（userdb: ファイルベース認証）
+authmodulelist="authuserdb"
+
+# デーモン設定
+authmodulelistorig="authuserdb authpam authldap authmysql authpgsql"
+daemons=5
+authdaemonvar=/var/run/courier/authdaemon
+DEBUG_LOGIN=1
+DEFAULTOPTIONS=""
+LOGGEROPTS=""

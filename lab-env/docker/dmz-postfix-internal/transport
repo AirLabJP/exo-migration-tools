@@ -1,0 +1,8 @@
+# DMZ Internal トランスポート設定
+# EXOからのフォールバックをCourier IMAPへ配送
+
+# === 内部ドメイン（Courier IMAPへ配送） ===
+test.example.co.jp      smtp:[courier-imap]:25
+example.co.jp           smtp:[courier-imap]:25
+sub.example.co.jp       smtp:[courier-imap]:25
+lab.local               smtp:[courier-imap]:25

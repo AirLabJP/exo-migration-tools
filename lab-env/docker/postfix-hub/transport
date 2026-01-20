@@ -1,0 +1,22 @@
+# Postfix Hub トランスポート設定
+# 宛先ドメインに応じてルーティングを変更
+#
+# 現行環境の再現:
+# - 内部ドメイン宛: Courier IMAP（メールボックス）へ配送
+# - 外部ドメイン宛: DMZ AWS経由でインターネットへ
+#
+# EXO移行後:
+# - 移行済みドメイン宛: EXO（dmz-awsのtransport変更で対応）
+# - 未移行ドメイン宛: 既存経路のまま
+
+# === 内部ドメイン（Courier IMAPへ配送） ===
+test.example.co.jp      smtp:[courier-imap]:25
+example.co.jp           smtp:[courier-imap]:25
+sub.example.co.jp       smtp:[courier-imap]:25
+
+# === ラボドメイン ===
+lab.local               smtp:[courier-imap]:25
+
+# === 外部宛（DMZ AWS経由） ===
+# デフォルトルート（main.cfのrelayhostで設定）
+# *                     smtp:[dmz-aws]:25
