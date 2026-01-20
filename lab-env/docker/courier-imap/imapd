@@ -1,0 +1,28 @@
+# Courier IMAP デーモン設定
+# 検証環境用
+
+# 基本設定
+ADDRESS=0.0.0.0
+PORT=143
+MAXDAEMONS=40
+MAXPERIP=20
+PIDFILE=/var/run/courier/imapd.pid
+TCPDOPTS="-nodnslookup -noidentlookup"
+LOGGEROPTS=""
+IMAP_CAPABILITY="IMAP4rev1 UIDPLUS CHILDREN NAMESPACE THREAD=ORDEREDSUBJECT THREAD=REFERENCES SORT QUOTA AUTH=PLAIN"
+
+# 認証設定
+AUTHMODULES="authuserdb"
+
+# タイムアウト設定
+IMAP_IDLE_TIMEOUT=60
+IMAP_CAPABILITY_IDLE=1
+
+# メールディレクトリ形式
+MAILDIRPATH=Maildir
+
+# ログ
+IMAPACCESSLOG=1
+
+# デバッグ（検証環境用）
+DEBUG_LOGIN=1

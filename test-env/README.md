@@ -1,6 +1,9 @@
 # EXO移行スクリプト検証環境
 
-顧客環境（Postfix + Courier IMAP）を模擬したDocker環境。
+> ⚠️ **注意**: この環境はDovecotベースの簡易版です。
+> 顧客環境に近いCourier IMAPベースの検証環境は **[lab-env/](../lab-env/)** を使用してください。
+
+顧客環境（Postfix + Courier IMAP）を模擬したDocker環境（簡易版: Dovecot使用）。
 
 ## テスト仕様書
 

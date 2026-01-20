@@ -1,0 +1,21 @@
+# バーチャルエイリアス設定
+# メーリングリスト、転送設定等を定義
+
+# === メーリングリスト ===
+# all-staff@test.example.co.jp → 全員に配送
+all-staff@test.example.co.jp    user1@test.example.co.jp, user2@test.example.co.jp, user3@test.example.co.jp
+
+# pilot-users@test.example.co.jp → パイロットユーザー
+pilot-users@test.example.co.jp  pilot01@test.example.co.jp, pilot02@test.example.co.jp, pilot03@test.example.co.jp, pilot04@test.example.co.jp, pilot05@test.example.co.jp
+
+# === エイリアス ===
+# postmaster
+postmaster@test.example.co.jp   admin@test.example.co.jp
+postmaster@example.co.jp        admin@example.co.jp
+postmaster@sub.example.co.jp    admin@sub.example.co.jp
+
+# abuse
+abuse@test.example.co.jp        admin@test.example.co.jp
+
+# info → 複数宛先
+info@test.example.co.jp         user1@test.example.co.jp, admin@test.example.co.jp

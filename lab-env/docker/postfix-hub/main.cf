@@ -1,0 +1,64 @@
+# Postfix Hub（内部SMTPハブ）設定
+# 顧客環境の内部Postfixを再現
+# Thunderbird等のMUAからの送信を受け付け、適切な宛先にルーティング
+
+# 基本設定
+smtpd_banner = $myhostname ESMTP Lab Mail Hub
+biff = no
+append_dot_mydomain = no
+readme_directory = no
+compatibility_level = 3.6
+
+# ホスト設定
+myhostname = postfix-hub.lab.local
+mydomain = lab.local
+myorigin = $mydomain
+mydestination = $myhostname, localhost.$mydomain, localhost
+
+# ネットワーク設定
+inet_interfaces = all
+inet_protocols = ipv4
+
+# リレー設定
+# 顧客環境：内部から外部への送信はGWサーバー経由
+# 検証環境：GWは除外し、dmz-awsへ直接リレー
+relayhost = [dmz-aws]:25
+
+# 許可するネットワーク（Dockerネットワーク全体）
+mynetworks = 127.0.0.0/8 172.16.0.0/12 192.168.0.0/16 10.0.0.0/8
+
+# トランスポートマップ
+# 宛先ドメインに応じてルーティングを変更
+transport_maps = hash:/etc/postfix/transport
+
+# バーチャルエイリアス
+virtual_alias_maps = hash:/etc/postfix/virtual
+
+# メッセージサイズ制限（顧客環境と同じ10MB）
+message_size_limit = 10485760
+
+# メールボックス配送
+# Courier IMAPにLMTP/SMTPで配送
+mailbox_transport = smtp:[courier-imap]:25
+
+# ローカル配送無効化（全てリモート配送）
+local_transport = error:local delivery disabled
+
+# セキュリティ設定（検証環境用に緩和）
+smtpd_recipient_restrictions = permit_mynetworks, reject_unauth_destination
+smtpd_relay_restrictions = permit_mynetworks, reject_unauth_destination
+
+# TLS設定（検証環境では無効化）
+smtpd_tls_security_level = none
+smtp_tls_security_level = none
+
+# キュー設定
+maximal_queue_lifetime = 1d
+bounce_queue_lifetime = 1d
+queue_run_delay = 300s
+
+# ログ設定
+maillog_file = /var/log/mail.log
+
+# デバッグ（検証環境用）
+debug_peer_level = 2

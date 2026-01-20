@@ -1,0 +1,21 @@
+# Courier IMAP SSL設定
+# 検証環境用
+
+# SSL有効化
+IMAPDSSLSTART=YES
+
+# ポート
+SSLPORT=993
+SSLADDRESS=0.0.0.0
+SSLPIDFILE=/var/run/courier/imapd-ssl.pid
+
+# 証明書（自己署名証明書を使用）
+TLS_CERTFILE=/etc/courier/imapd.pem
+
+# TLSオプション
+TLS_PROTOCOL=TLSv1.2:TLSv1.3
+TLS_CIPHER_LIST=ECDH+AESGCM:DH+AESGCM:ECDH+AES256:DH+AES256:ECDH+AES128:DH+AES:RSA+AESGCM:RSA+AES:!aNULL:!MD5:!DSS
+
+# その他
+COURIERTLS=/usr/bin/couriertls
+TCPDOPTS="-nodnslookup -noidentlookup"

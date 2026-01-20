@@ -1,0 +1,60 @@
+# DMZ Postfix AWS（外部受口）設定
+# 顧客環境のAWS DMZ SMTPを再現
+#
+# 役割:
+# - 外部（FireEye経由）からのメール受信
+# - 内部宛はpostfix-hub経由でCourier IMAPへ
+# - EXO移行後：移行済みドメインはEXOへルーティング
+
+# 基本設定
+smtpd_banner = $myhostname ESMTP DMZ-AWS
+biff = no
+append_dot_mydomain = no
+readme_directory = no
+compatibility_level = 3.6
+
+# ホスト設定
+myhostname = dmz-aws.lab.local
+mydomain = lab.local
+myorigin = $mydomain
+mydestination = 
+
+# ネットワーク設定
+inet_interfaces = all
+inet_protocols = ipv4
+
+# リレー許可ドメイン（受け付けるドメイン）
+relay_domains = test.example.co.jp, example.co.jp, sub.example.co.jp, lab.local
+
+# トランスポートマップ（宛先に応じてルーティング）
+# EXO移行時はこのファイルを更新
+transport_maps = hash:/etc/postfix/transport
+
+# セキュリティ設定
+# 検証環境用に緩和
+smtpd_recipient_restrictions = 
+    permit_mynetworks,
+    reject_unauth_destination
+
+mynetworks = 127.0.0.0/8 172.16.0.0/12 192.168.0.0/16 10.0.0.0/8
+
+# メッセージサイズ制限（顧客環境と同じ10MB）
+message_size_limit = 10485760
+
+# TLS設定（検証環境では無効化）
+smtpd_tls_security_level = none
+smtp_tls_security_level = none
+
+# キュー設定
+maximal_queue_lifetime = 1d
+bounce_queue_lifetime = 1d
+queue_run_delay = 300s
+
+# ログ設定
+maillog_file = /var/log/mail.log
+
+# ホップ制限（ループ防止）
+hopcount_limit = 25
+
+# デバッグ（検証環境用）
+debug_peer_level = 2
