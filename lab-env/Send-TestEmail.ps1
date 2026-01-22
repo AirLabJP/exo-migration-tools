@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
   検証用メール送信スクリプト（Thunderbird代替）
 

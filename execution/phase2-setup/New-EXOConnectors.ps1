@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Exchange Online コネクタ作成スクリプト
 

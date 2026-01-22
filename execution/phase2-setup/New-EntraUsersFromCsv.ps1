@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
   CSVからEntra IDユーザーを作成（クラウドオンリー）
 

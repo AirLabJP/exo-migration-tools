@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Exchange Online トランスポートルール一括作成スクリプト
 

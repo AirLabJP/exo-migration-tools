@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
   EXO Accepted Domain タイプ復元スクリプト
 

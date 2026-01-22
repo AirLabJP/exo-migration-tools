@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
   EXO Accepted Domain タイプ一括変更スクリプト
 
