@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
   Active Directory Domain Services 2台構成（レプリケーション）構築スクリプト
 

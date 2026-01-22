@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
   Entra Connect (Azure AD Connect) 棚卸しスクリプト
 

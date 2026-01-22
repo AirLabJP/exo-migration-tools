@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
   メールヘッダーアナライザー（Microsoft Message Header Analyzer風）
 

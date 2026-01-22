@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
   Exchange AD スキーマ拡張スクリプト
 

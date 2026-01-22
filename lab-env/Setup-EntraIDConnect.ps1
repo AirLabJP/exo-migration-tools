@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
   Entra ID Connect 自動構築スクリプト
 

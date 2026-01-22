@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
   Entra ID（Azure AD）棚卸しスクリプト（強化版）
 

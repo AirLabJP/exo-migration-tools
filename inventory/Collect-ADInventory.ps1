@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
   Active Directory メール属性棚卸しスクリプト（強化版）
 

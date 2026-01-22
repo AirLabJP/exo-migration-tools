@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
   Exchange Online移行 検証環境構築スクリプト（Windows Server + AD DS）
 

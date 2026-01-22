@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
   Exchange Online 棚卸しスクリプト（強化版）
 
