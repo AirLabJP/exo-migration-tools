@@ -164,7 +164,7 @@ Thunderbird → Postfix（SMTPハブ）→ 現行GWサーバー → AWS DMZ SMTP
   │     │
   │     └─ メールボックスなし → [Internal Relay] → 内部DMZ SMTP → Courier IMAP
   │
-  └─ 未移行ドメイン宛 → Courier IMAP（既存のまま）
+  └─ 未移行ドメイン宛 → Postfix → Courier IMAP（既存のまま）
 ```
 
 ### 3.3 メールフローマトリクス
@@ -178,7 +178,7 @@ Thunderbird → Postfix（SMTPハブ）→ 現行GWサーバー → AWS DMZ SMTP
 | 5 | 未移行 | 未移行 | Postfix → Courier | 既存のまま |
 | 6 | 未移行 | 外部 | Postfix → 現行GW → AWS DMZ | 既存のまま |
 | 7 | 外部 | EXO | FireEye → AWS DMZ → EXO | |
-| 8 | 外部 | 未移行 | FireEye → AWS DMZ → Courier | 既存のまま |
+| 8 | 外部 | 未移行 | FireEye → AWS DMZ → Postfix → Courier | 既存のまま |
 
 ---
 
@@ -335,7 +335,7 @@ postfix reload
 
 ### 6.2 内部DMZ SMTP設定
 
-EXOからの接続を許可し、Courier IMAPへ中継。
+EXOからの接続を許可し、Postfixへ中継（Postfix経由でCourier IMAPへ配送）。
 
 **mynetworks追加**:
 ```
@@ -345,8 +345,8 @@ EXOからの接続を許可し、Courier IMAPへ中継。
 
 **transport設定**:
 ```
-# 内部ドメインはCourier IMAPへ
-example.co.jp    smtp:[courier-imap.internal:25]
+# 内部ドメインはPostfix（SMTPハブ）へ中継
+example.co.jp    smtp:[postfix-hub.internal:25]
 ```
 
 ### 6.3 ループ防止（header_checks）

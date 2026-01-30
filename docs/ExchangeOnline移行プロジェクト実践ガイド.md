@@ -204,7 +204,7 @@ AWS DMZ SMTP
     ├─ 未移行ドメイン宛
     │       │
     │       ▼
-    │   Courier IMAP → 未移行ユーザー（現行通り）
+    │   Postfix → Courier IMAP → 未移行ユーザー（現行通り）
     │
     └─ 移行済みドメイン宛
             │
@@ -238,7 +238,7 @@ AWS DMZ SMTP
 | ④ | Thunderbird | 移行済みユーザー | Postfix → AWS DMZ → EXO |
 | ⑤ | Outlook | 移行済みユーザー | EXO内完結 |
 | ⑥ | Outlook | 未移行ユーザー | EXO → 内部DMZ → Courier |
-| 受信 | 外部 | 内部 | FireEye → AWS DMZ → EXO/Courier |
+| 受信 | 外部 | 内部 | FireEye → AWS DMZ → Postfix → EXO/Courier |
 
 ---
 
@@ -248,7 +248,7 @@ AWS DMZ SMTP
 |---|---|---|
 | **Postfix（SMTPハブ）** | ✅ 変更 | 移行済みドメイン → AWS DMZ SMTP（現状Courier直送なら） |
 | **AWS DMZ SMTP** | ✅ 変更 | transport設定（移行済みドメイン → EXO） |
-| **内部DMZ SMTP** | ✅ 確認 | EXOからの受信許可、40ドメイン→Courier転送 |
+| **内部DMZ SMTP** | ✅ 確認 | EXOからの受信許可、40ドメイン→Postfixへ中継（現行リレー設定） |
 | FireEye | ❌ 変更なし | AWS DMZ SMTP向きのまま |
 | Courier IMAP | ❌ 変更なし | — |
 
@@ -377,7 +377,7 @@ EXOで対象ドメインを **Internal Relay** として登録し、メールボ
 
 3. **内部DMZ SMTP側の設定**
    - EXOからの接続を許可（IPレンジ or 証明書認証）
-   - 既存の40ドメイン→Courier IMAP転送設定を確認
+   - 既存の40ドメイン→Postfix中継設定を確認
 
 4. **本格移行時の出口戦略**
    - 全員移行完了後、Accepted DomainをAuthoritativeに変更
@@ -444,11 +444,13 @@ New-TransportRule -Name "Mark Fallback Route" `
 
   ┌─────────────────────────────────────────────────────────────────────┐
   │ 内部ネットワーク                                                     │
-  │  ┌──────────────┐                                                   │
-  │  │ ユーザー端末  │ Windows + Thunderbird                            │
-  │  │ (AD認証)     │ ※POPでメール受信（サーバーに残らない）             │
-  │  └──────┬───────┘                                                   │
-  └─────────┼───────────────────────────────────────────────────────────┘
+  │  ┌──────────────┐  ┌──────────────┐                                 │
+  │  │ ユーザー端末  │  │ システムメール │                                │
+  │  │ Thunderbird  │  │ (統合ID等)   │                                 │
+  │  │ (AD認証/POP) │  │              │                                 │
+  │  └──────┬───────┘  └──────┬───────┘                                 │
+  │         └────────┬────────┘                                         │
+  └──────────────────┼──────────────────────────────────────────────────┘
             │ SMTP送信
             ▼
   ┌─────────────────────────────────────────────────────────────────────┐
@@ -470,7 +472,7 @@ New-TransportRule -Name "Mark Fallback Route" `
   │    │         │                                                      │
   │    │    ┌────▼────────┐                                             │
   │    │    │ DMZ SMTP    │ 外部宛 → インターネット                     │
-  │    │    │ (中継)      │ 内部宛 → Courier IMAP                       │
+  │    │    │ (中継)      │ 内部宛（40ドメイン）→ Postfix               │
   │    │    └─────────────┘                                             │
   │    │                                                                │
   │    └────────┐                                                       │
@@ -501,9 +503,15 @@ New-TransportRule -Name "Mark Fallback Route" `
   ┌─▼───────┐ ┌─▼─────────────┐
   │ AWS      │ │ 内部ネットワーク│
   │ DMZ SMTP │ │ DMZ SMTP      │ ※ほとんど通らない実態
-  └────┬─────┘ └───────────────┘
-       │
-       ▼
+  └────┬─────┘ └──────┬────────┘
+       │              │ 40ドメイン宛 → Postfixへ中継
+       ▼              │
+  ┌──────────────┐    │
+  │ Postfix      │◄───┘
+  │ (SMTPハブ)   │
+  └──────┬───────┘
+         │ 40ドメイン宛
+         ▼
   ┌──────────────┐
   │ Courier IMAP │
   └──────────────┘
@@ -561,6 +569,18 @@ New-TransportRule -Name "Mark Fallback Route" `
 | Webメール | Roundcube（AWS） | ほぼ使われていない |
 | 共有アドレス | あり（詳細不明） | 要確認 |
 | メール転送 | 横行している | お客様は防ぎたい意向 |
+| クライアント | Thunderbird + システムメール | システムメール＝統合ID等からの通知 |
+
+### 各コンポーネントのリレー設定（現行）
+
+| コンポーネント | 受信元 | リレー先 | 備考 |
+|---|---|---|---|
+| **Postfix（SMTPハブ）** | Thunderbird、システムメール、AWS DMZ SMTP、内部NW DMZ SMTP | 40ドメイン宛→Courier IMAP、外部宛→GuardianWall | SMTPハブとして全経路を集約 |
+| **GuardianWall** | Postfix | AWS DMZ SMTP | 添付ファイルURL化後に中継 |
+| **AWS DMZ SMTP** | GuardianWall、FireEye | 40ドメイン宛→Postfix、外部宛→インターネット | transport設定でドメイン単位制御 |
+| **内部NW DMZ SMTP** | FireEye（フォールバック） | 40ドメイン宛→Postfix（全てPostfixへ中継） | ほぼ使われていない。FireEyeのフォールバック先 |
+| **FireEye** | インターネット（MX） | AWS DMZ SMTP（メイン）、内部NW DMZ SMTP（フォールバック） | 受信専用、40ドメインのMX |
+| **Courier IMAP** | Postfix | —（最終配送先） | メールボックス、40ドメイン |
 
 ### 付帯環境・運用上の課題
 

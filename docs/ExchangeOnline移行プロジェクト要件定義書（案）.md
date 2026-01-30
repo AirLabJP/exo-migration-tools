@@ -68,13 +68,13 @@ tags:
 
 ```
 【送信フロー】
-Thunderbird → Postfix（SMTPハブ）→ 
+Thunderbird / システムメール → Postfix（SMTPハブ）→
   ├─ 内部宛 → Courier IMAP
   └─ 外部宛 → GuardianWall → AWS DMZ SMTP → インターネット
 
 【受信フロー】
-インターネット → FireEye（MX）→ AWS DMZ SMTP → Courier IMAP
-                                └─ フォールバック → 内部DMZ SMTP → Courier IMAP
+インターネット → FireEye（MX）→ AWS DMZ SMTP → Postfix → Courier IMAP
+                                └─ フォールバック → 内部DMZ SMTP → Postfix → Courier IMAP
 ```
 
 ### 2.4 ID管理
