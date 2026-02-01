@@ -165,6 +165,7 @@ Thunderbird → Postfix（SMTPハブ）→ 現行GWサーバー → AWS DMZ SMTP
   │     └─ メールボックスなし → [Internal Relay] → 内部DMZ SMTP → Courier IMAP
   │
   └─ 未移行ドメイン宛 → Courier IMAP（既存のまま）
+     ※実態では DMZ と Courier の間に中継 MTA が存在する可能性あり。棚卸しで確認。
 ```
 
 ### 3.3 メールフローマトリクス
@@ -336,6 +337,8 @@ postfix reload
 ### 6.2 内部DMZ SMTP設定
 
 EXOからの接続を許可し、Courier IMAPへ中継。
+
+**※棚卸し時の確認**: 現行環境では DMZ と Courier の間に**中継 Postfix（または別 MTA）が存在する**構成の可能性あり。内部 DMZ の `transport` の次のホップが「Courier 直」か「中継 MTA」かを棚卸しで確認し、実態に合わせて本設定を修正すること。詳細は [メールフロー再検証_DMZ-Courier経路](メールフロー再検証_DMZ-Courier経路.md) を参照。
 
 **mynetworks追加**:
 ```

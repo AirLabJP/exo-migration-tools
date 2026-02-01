@@ -76,6 +76,7 @@ Thunderbird → Postfix（SMTPハブ）→
 インターネット → FireEye（MX）→ AWS DMZ SMTP → Courier IMAP
                                 └─ フォールバック → 内部DMZ SMTP → Courier IMAP
 ```
+※上記は論理的な経路。実環境では AWS DMZ / 内部 DMZ と Courier の間に**中継 Postfix 等が存在する**可能性あり。棚卸しで transport ・次のホップを現地確認すること。→ [メールフロー再検証_DMZ-Courier経路](メールフロー再検証_DMZ-Courier経路.md)
 
 ### 2.4 ID管理
 

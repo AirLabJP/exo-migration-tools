@@ -8,6 +8,8 @@ Linux（Postfix/Courier IMAP）ベースのメールシステムからExchange O
 |-------------|------|
 | [permissions.md](docs/permissions.md) | 各スクリプトに必要な権限一覧 |
 | [rollback_limits.md](docs/rollback_limits.md) | 切り戻しの限界（戻せるもの・戻せないもの） |
+| [メールフロー再検証_DMZ-Courier経路](docs/メールフロー再検証_DMZ-Courier経路.md) | DMZ–Courier 間の中継 Postfix 疑義・棚卸し確認事項 |
+| [決め打ち前提・リスク管理表](docs/決め打ち前提・リスク管理表.md) | 決め打ち前提の一覧・現地確認すべき項目 |
 | [要件定義書（案）](docs/ExchangeOnline移行プロジェクト要件定義書（案）.md) | プロジェクト要件 |
 | [基本設計書（案）](docs/ExchangeOnline移行プロジェクト基本設計書（案）.md) | システム設計 |
 | [実践ガイド](docs/ExchangeOnline移行プロジェクト実践ガイド.md) | 移行戦略・メールフロー設計 |
